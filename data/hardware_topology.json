@@ -1,0 +1,5 @@
+{
+  "name": "simulated_5q_device",
+  "num_qubits": 5,
+  "edges": [[0,1],[1,2],[2,3],[3,4],[0,2],[1,3]]
+}
