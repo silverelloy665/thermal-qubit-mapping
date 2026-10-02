@@ -1,0 +1,24 @@
+# Configuration for Thermal-Aware Qubit Mapping Study
+experiment:
+  shots: 8192
+  seeds:
+    transpiler: 42
+    simulator: 42
+    random_mapper: 12345
+  random_layouts_count: 50
+  budget_cap_qpu_seconds: 600
+
+backends:
+  fake_5q: "fake_vigo"
+  fake_16q: "fake_guadalupe"
+  real_5q: "ibm_kyoto" # Placeholder, update based on availability
+  real_16q: "ibm_kyoto"
+
+thermal:
+  # Synthetic temperature profile (in millikelvin)
+  default_temp_mK: 15.0
+  hot_qubits:
+    - index: 0
+      temp_mK: 50.0
+    - index: 1
+      temp_mK: 40.0

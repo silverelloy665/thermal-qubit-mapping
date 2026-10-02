@@ -1,0 +1,7 @@
+.env
+*.token
+.venv
+__pycache__/
+*.pyc
+results/raw_private/
+.ipynb_checkpoints/
