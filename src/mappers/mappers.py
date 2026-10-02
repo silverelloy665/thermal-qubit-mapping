@@ -1,21 +1,20 @@
 import itertools
 import random
+import time
+import math
 import numpy as np
 from typing import List, Dict, Tuple
 from qiskit import QuantumCircuit, transpile
 from qiskit.transpiler import Target
 import rustworkx as rx
-from qiskit.transpiler.passes import VF2Layout
 
 from src.metrics.esp import compute_esp
 
 def get_connected_subgraphs(target: Target, k: int) -> List[List[int]]:
-    """Find all connected subgraphs of size k in the backend target."""
     num_qubits = target.num_qubits
     if k > num_qubits:
         return []
     
-    # Build graph
     graph = rx.PyGraph()
     graph.add_nodes_from(range(num_qubits))
     edges = []
@@ -23,8 +22,6 @@ def get_connected_subgraphs(target: Target, k: int) -> List[List[int]]:
         edges.append((q1, q2))
     graph.add_edges_from_no_data(edges)
     
-    # Simple BFS/DFS to find connected subgraphs of size k
-    # For small k (like 5), this is fast.
     subgraphs = set()
     
     def dfs(current_subgraph, neighbors):
@@ -41,23 +38,31 @@ def get_connected_subgraphs(target: Target, k: int) -> List[List[int]]:
         
     return [list(sg) for sg in subgraphs]
 
-def transpile_with_layout(circuit: QuantumCircuit, target: Target, layout: list, seed: int = 42) -> QuantumCircuit:
-    """Transpile a circuit with a specific initial layout."""
-    return transpile(
-        circuit,
-        target=target,
-        initial_layout=layout,
-        routing_method='sabre',
-        optimization_level=1,
-        seed_transpiler=seed
-    )
+def transpile_with_routing_seeds(circuit: QuantumCircuit, target: Target, layout: list, routing_seeds: int = 3, use_thermal: bool = False, temps_mk: dict = None) -> Tuple[QuantumCircuit, float]:
+    best_tc = None
+    best_esp = -1.0
+    
+    for r_seed in range(routing_seeds):
+        tc = transpile(
+            circuit,
+            target=target,
+            initial_layout=layout,
+            routing_method='sabre',
+            optimization_level=1,
+            seed_transpiler=r_seed
+        )
+        esp_std, esp_th = compute_esp(tc, target, temps_mk)
+        score = esp_th if use_thermal else esp_std
+        if score > best_esp:
+            best_esp = score
+            best_tc = tc
+            
+    return best_tc, best_esp
 
-def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, seed: int = 42) -> List[QuantumCircuit]:
-    """Generates random valid initial layouts (connected subgraphs)."""
+def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, seed: int = 42, routing_seeds: int = 3) -> List[QuantumCircuit]:
     random.seed(seed)
     subgraphs = get_connected_subgraphs(target, circuit.num_qubits)
     if not subgraphs:
-        # Fallback to completely random choices
         subgraphs = [random.sample(range(target.num_qubits), circuit.num_qubits) for _ in range(num_draws)]
     
     circuits = []
@@ -65,12 +70,11 @@ def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, 
         sg = random.choice(subgraphs)
         perm = list(sg)
         random.shuffle(perm)
-        tc = transpile_with_layout(circuit, target, perm, seed=seed+i)
+        tc, _ = transpile_with_routing_seeds(circuit, target, perm, routing_seeds=routing_seeds)
         circuits.append(tc)
     return circuits
 
 def mapper_qiskit_default(circuit: QuantumCircuit, target: Target, level: int, seed: int = 42) -> QuantumCircuit:
-    """Qiskit default transpilation at specified optimization level."""
     return transpile(
         circuit,
         target=target,
@@ -79,32 +83,25 @@ def mapper_qiskit_default(circuit: QuantumCircuit, target: Target, level: int, s
     )
 
 def mapper_esp(circuit: QuantumCircuit, target: Target, temps_mk: dict = None, 
-               use_thermal: bool = False, exhaustive: bool = False, seed: int = 42) -> Tuple[QuantumCircuit, float]:
-    """
-    Search for the best layout using ESP.
-    If exhaustive=True, search all permutations of all connected subgraphs.
-    If exhaustive=False, search random permutations over subgraphs (simulated annealing or random shots).
-    """
+               use_thermal: bool = False, exhaustive: bool = False, seed: int = 42, routing_seeds: int = 3, max_candidate_layouts: int = 200) -> Tuple[QuantumCircuit, float, float]:
+    start_time = time.time()
     subgraphs = get_connected_subgraphs(target, circuit.num_qubits)
     best_tc = None
     best_esp = -1.0
     
-    # Determine the search space
     search_layouts = []
-    if exhaustive:
+    if exhaustive and len(subgraphs) * math.factorial(circuit.num_qubits) < 5000:
         for sg in subgraphs:
             for p in itertools.permutations(sg):
                 search_layouts.append(list(p))
     else:
-        # Random search over subgraphs
         random.seed(seed)
-        for _ in range(50):
+        for _ in range(max_candidate_layouts):
             sg = random.choice(subgraphs)
             perm = list(sg)
             random.shuffle(perm)
             search_layouts.append(perm)
             
-    # Remove duplicates
     unique_layouts = []
     seen = set()
     for lay in search_layouts:
@@ -114,16 +111,14 @@ def mapper_esp(circuit: QuantumCircuit, target: Target, temps_mk: dict = None,
             unique_layouts.append(lay)
             
     for layout in unique_layouts:
-        tc = transpile_with_layout(circuit, target, layout, seed=seed)
-        esp_std, esp_th = compute_esp(tc, target, temps_mk)
-        score = esp_th if use_thermal else esp_std
-        
+        tc, score = transpile_with_routing_seeds(circuit, target, layout, routing_seeds, use_thermal, temps_mk)
         if score > best_esp:
             best_esp = score
             best_tc = tc
             
-    if best_tc is None: # Fallback if no subgraphs found
+    if best_tc is None:
         best_tc = transpile(circuit, target=target, optimization_level=1, seed_transpiler=seed)
         best_esp = compute_esp(best_tc, target, temps_mk)[1 if use_thermal else 0]
         
-    return best_tc, best_esp
+    elapsed = time.time() - start_time
+    return best_tc, best_esp, elapsed
