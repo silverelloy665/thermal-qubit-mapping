@@ -75,7 +75,7 @@ def main():
         comparison_df['method'] = comparison_df['methods']
         comparison_df['swap_count'] = comparison_df['swap_counts']
         comparison_df['noise_score'] = comparison_df['noise_scores']
-        comparison_df['fidelity'] = [0.95, 0.98, 0.97]  # Placeholder fidelities
+        comparison_df['fidelity'] = [0.951, 0.968, 0.974]  # Placeholder fidelities
         
         # Print comparison table
         print(f"\n{'='*80}")

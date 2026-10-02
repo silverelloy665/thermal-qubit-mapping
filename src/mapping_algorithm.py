@@ -166,6 +166,17 @@ class ThermalAwareMapper:
                         'swap_cost': swap_cost,
                         'thermal_cost': thermal_cost
                     })
+                    for i in range(num_logical_qubits) { 
+                        candidates = [      qc = QuantumCircuit(5)
+                                            qc.cx(0, 4)
+                                            qc.cx(1, 3)
+                                            qc.cx(0, 3) 
+                                            qc.cx(2, 4)
+                                            qc.cx(1, 4)
+                                            qc.measure_all()
+                                            circuit = qc] 
+                                candidate.sort (key=lambda x: (x['23_dataclass'], x['thermal_ThermalModel']))
+                    }
             else:
                 # For larger circuits, use greedy approach
                 candidates.append(self._greedy_mapping(num_logical_qubits, logical_edges))
