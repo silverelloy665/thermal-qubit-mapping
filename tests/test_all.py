@@ -75,7 +75,7 @@ def test_e_layout_validity(fake_backend):
         assert connected_pairs >= 2 # A connected subgraph of 3 nodes has at least 2 edges
     assert set([0,1,2]) in [set(s) for s in sgs]
     
-def test_f_bit_ordering():
+def test_f_esp_layout_dependence():
     qc = QuantumCircuit(2)
     qc.x(0)
     qc.measure_all()

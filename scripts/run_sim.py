@@ -69,9 +69,10 @@ def compact_circuit(tc, target, temps_mk, active_qubits):
         compact_target.add_instruction(inst, props_dict)
                 
     if getattr(target, 'qubit_properties', None):
-        compact_target.qubit_properties = [QubitProperties()] * len(active_qubits)
+        new_props = []
         for q in active_qubits:
-            compact_target.qubit_properties[mapping[q]] = target.qubit_properties[q]
+            new_props.append(target.qubit_properties[q])
+        compact_target.qubit_properties = new_props
             
     compact_nm = build_thermal_noise_model(compact_target, temps_mk=compact_temps)
     return compact_qc, compact_nm
