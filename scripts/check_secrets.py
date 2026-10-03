@@ -1,31 +1,52 @@
 import os
 import sys
+import re
+import subprocess
 
 def check_secrets():
-    secrets = ['QISKIT_IBM_TOKEN', 'token', 'apikey', 'api_key', 'ibm_cloud']
-    found = False
+    errors = []
+    
+    # 1. Regex checks
+    token_re = re.compile(r'(?<!def )(?<!class )[A-Za-z0-9]{40,}')
+    qiskit_re = re.compile(r'QISKIT_IBM_TOKEN\s*=\s*([A-Za-z0-9_-]+)')
+    
+    exts = ('.py', '.yaml', '.md', '.json', '.csv', '.ipynb', '.txt', '.toml')
+    
     for root, dirs, files in os.walk('.'):
         if '.venv' in dirs: dirs.remove('.venv')
         if '.git' in dirs: dirs.remove('.git')
-        for file in files:
-            if file.endswith('.py') or file.endswith('.yaml') or file == '.env':
-                filepath = os.path.join(root, file)
-                if filepath.endswith('.env.example') or filepath.endswith('.env') or file == 'check_secrets.py' or file == 'run_hardware.py': continue
+        
+        for f in files:
+            if f.endswith(exts):
+                filepath = os.path.join(root, f)
+                if 'check_secrets.py' in filepath: continue
                 try:
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        lines = f.readlines()
-                        for i, line in enumerate(lines):
-                            line_lower = line.lower()
-                            if any(s in line_lower for s in secrets) and '=' in line and len(line.split('=')[1].strip()) > 10:
-                                print(f"WARNING: Potential secret found in {filepath} at line {i+1}")
-                                found = True
-                except:
+                    with open(filepath, 'r', encoding='utf-8') as file:
+                        for i, line in enumerate(file):
+                            if token_re.search(line):
+                                errors.append(f"Token-like string in {filepath}:{i+1}")
+                            m = qiskit_re.search(line)
+                            if m and len(m.group(1).strip()) > 0:
+                                errors.append(f"QISKIT_IBM_TOKEN set in {filepath}:{i+1}")
+                except Exception:
                     pass
-    if found:
-        print("Secrets check failed.")
+                    
+    # 2. Check .env is untracked
+    res = subprocess.run(['git', 'ls-files', '--error-unmatch', '.env'], capture_output=True)
+    if res.returncode == 0:
+        errors.append(".env is tracked by git")
+        
+    # 3. Check .env not in history
+    res2 = subprocess.run(['git', 'log', '--all', '--', '.env'], capture_output=True, text=True)
+    if res2.stdout.strip():
+        errors.append(".env found in git history")
+        
+    if errors:
+        print("Secrets check failed:")
+        for e in errors: print(f" - {e}")
         sys.exit(1)
     else:
-        print("No hardcoded secrets found.")
+        print("No secrets found. .env is safe.")
         sys.exit(0)
 
 if __name__ == '__main__':

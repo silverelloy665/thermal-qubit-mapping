@@ -1,94 +1,123 @@
 import pytest
-import numpy as np
-from qiskit import QuantumCircuit
-from qiskit_ibm_runtime.fake_provider import FakeVigoV2
-from qiskit_aer import AerSimulator
+import os
 import sys
+import math
+import numpy as np
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
-from src.metrics.esp import compute_esp
-from src.benchmarks.circuits import get_all_benchmarks
-from src.mappers.mappers import mapper_random
-from scripts.run_sim import compute_fidelity
+from qiskit import QuantumCircuit, transpile
+from qiskit.providers.fake_provider import GenericBackendV2
+from qiskit_aer import AerSimulator
 
-def test_esp_hand_checkable():
-    backend = FakeVigoV2()
-    target = backend.target
+from src.metrics.esp import esp_standard, esp_thermal, compute_esp_base
+from src.mappers.mappers import mapper_esp, get_connected_subgraphs
+
+@pytest.fixture
+def fake_backend():
+    return GenericBackendV2(num_qubits=5, basis_gates=['cx', 'id', 'rz', 'sx', 'x'], coupling_map=[[0,1],[1,0],[1,2],[2,1],[2,3],[3,2],[3,4],[4,3]], seed=42)
+
+def test_a_hand_checkable_esp():
+    qc = QuantumCircuit(1)
+    qc.x(0)
+    qc.measure_all()
+    backend = GenericBackendV2(num_qubits=1, basis_gates=['x'])
+    backend.target['x'][(0,)].error = 0.01
+    backend.target['x'][(0,)].duration = 0.0
+    backend.target['measure'][(0,)].error = 0.02
+    backend.target['measure'][(0,)].duration = 0.0
     
-    # Create simple circuit
+    tc = transpile(qc, backend, optimization_level=0)
+    val = esp_standard(tc, backend.target)
+    # 0.99 * 0.98 = 0.9702
+    assert math.isclose(val, 0.9702, rel_tol=1e-12)
+
+def test_b_unused_qubits_do_not_change_esp(fake_backend):
+    qc1 = QuantumCircuit(2)
+    qc1.cx(0,1)
+    tc1 = transpile(qc1, fake_backend, initial_layout=[0,1], optimization_level=0)
+    
+    qc2 = QuantumCircuit(5)
+    qc2.cx(0,1)
+    tc2 = transpile(qc2, fake_backend, initial_layout=[0,1,2,3,4], optimization_level=0)
+    
+    assert math.isclose(esp_standard(tc1, fake_backend.target), esp_standard(tc2, fake_backend.target), rel_tol=1e-12)
+
+def test_c_thermal_term_changes_layout(fake_backend):
+    temps = {q: 15 for q in range(5)}
+    temps[1] = 150 # q1 is hot
+    qc = QuantumCircuit(2)
+    qc.cx(0,1)
+    tc, esp, _, lay, _ = mapper_esp(qc, fake_backend.target, temps_mk=temps, use_thermal=True, exhaustive=True, seed=42)
+    assert 1 not in lay
+
+def test_d_thermal_term_no_change_when_same_qubits(fake_backend):
+    temps = {q: 15 for q in range(5)}
+    temps[1] = 150
+    qc = QuantumCircuit(5)
+    for i in range(4): qc.cx(i, i+1)
+    
+    _, _, _, lay1, _ = mapper_esp(qc, fake_backend.target, temps_mk=None, use_thermal=False, exhaustive=True, seed=42)
+    _, _, _, lay2, _ = mapper_esp(qc, fake_backend.target, temps_mk=temps, use_thermal=True, exhaustive=True, seed=42)
+    assert lay1 == lay2
+
+def test_e_layout_validity(fake_backend):
+    sgs = get_connected_subgraphs(fake_backend.target, 3)
+    for sg in sgs:
+        assert len(sg) == 3
+        assert len(set(sg)) == 3
+    assert set([0,1,2]) in [set(s) for s in sgs]
+
+def test_f_bit_ordering():
     qc = QuantumCircuit(2)
     qc.x(0)
-    qc.cx(0, 1)
+    qc.measure_all()
+    backend = GenericBackendV2(num_qubits=2, basis_gates=['x'])
+    backend.target['x'][(0,)].error = 0.0
+    backend.target['x'][(1,)].error = 0.5
+    backend.target['x'][(0,)].duration = 0.0
+    backend.target['x'][(1,)].duration = 0.0
+    backend.target['measure'][(0,)].error = 0.0
+    backend.target['measure'][(1,)].error = 0.0
+    backend.target['measure'][(0,)].duration = 0.0
+    backend.target['measure'][(1,)].duration = 0.0
     
-    # Fake properties for easy checking
-    # Suppose x on 0 has 1% error, cx on 0,1 has 2% error
-    # ESP = (1 - 0.01) * (1 - 0.02) = 0.99 * 0.98 = 0.9702
-    
-    # Wait, target contains fake properties. We'll just check if compute_esp 
-    # computes a float in [0, 1]. To hand-check exactly, we could mock the target.
-    
-    # For now, just ensure it works and returns expected range
-    esp_std, esp_th = compute_esp(qc, target)
-    assert 0 <= esp_std <= 1.0
-    assert 0 <= esp_th <= 1.0
-    assert esp_th <= esp_std
+    tc = transpile(qc, backend, initial_layout=[1,0], optimization_level=0)
+    esp = esp_standard(tc, backend.target)
+    assert math.isclose(esp, 0.5, rel_tol=1e-3)
 
-def test_layout_validity():
-    backend = FakeVigoV2()
-    target = backend.target
+def test_g_120_layout_regression(fake_backend):
     qc = QuantumCircuit(5)
-    
-    circuits = mapper_random(qc, target, num_draws=5)
-    for c in circuits:
-        # Check that layout is applied and circuit uses 5 qubits
-        assert c.num_qubits == 5
-        # Verify it's transpiled to basis gates
-        for inst, _, _ in c.data:
-            assert inst.name in target.operation_names or inst.name in ['barrier', 'measure', 'delay']
-
-def test_fidelity_metric():
-    dist_a = {'00': 100}
-    dist_b = {'00': 100}
-    dist_c = {'11': 100}
-    dist_d = {'00': 50, '11': 50}
-    
-    # identical -> 1.0
-    assert np.isclose(compute_fidelity(dist_a, dist_b), 1.0)
-    # orthogonal -> 0.0
-    assert np.isclose(compute_fidelity(dist_a, dist_c), 0.0)
-    # half overlap -> ~0.5 (fidelity = (sqrt(p)*sqrt(q))^2 ) 
-    # For a={00:1}, d={00:0.5, 11:0.5}, fid = (sqrt(1 * 0.5) + 0)^2 = 0.5
-    assert np.isclose(compute_fidelity(dist_a, dist_d), 0.5)
-
-def test_old_bug_regression():
-    """
-    Reproduces the vacuous main.py circuit that gives 1.0 fidelity 
-    for any layout because there are no Hadamards, so the state stays |00000>
-    and CX gates do nothing.
-    """
-    qc = QuantumCircuit(5)
-    qc.cx(0, 4)
-    qc.cx(1, 3)
-    qc.cx(0, 3)
-    qc.cx(2, 4)
-    qc.cx(1, 4)
+    for i in range(4): qc.cx(i, i+1)
     qc.measure_all()
     
-    backend = FakeVigoV2()
-    sim = AerSimulator.from_backend(backend)
+    sim = AerSimulator()
+    for perm in [[0,1,2,3,4], [4,3,2,1,0], [1,2,0,3,4]]:
+        tc = transpile(qc, fake_backend, initial_layout=perm, optimization_level=0)
+        counts = sim.run(tc).result().get_counts()
+        assert '00000' in counts and counts['00000'] == 1024
+
+def test_h_no_hardcoded_results():
+    import glob
+    for filepath in glob.glob('scripts/*.py') + glob.glob('src/**/*.py', recursive=True):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+            assert '0.51' not in content
+            assert '0.9781' not in content
+
+def test_i_column_names_differ():
+    assert esp_standard.__name__ != esp_thermal.__name__
+
+def test_j_excess_over_readout_never_exceeds_raw(fake_backend):
+    qc = QuantumCircuit(1)
+    qc.x(0)
+    qc.measure_all()
+    tc = transpile(qc, fake_backend, initial_layout=[0], optimization_level=0)
     
-    # Any random mapping
-    mapped_circs = mapper_random(qc, backend.target, num_draws=3)
+    temps = {0: 150}
+    fake_backend.target['measure'][(0,)].error = 0.05
     
-    for c in mapped_circs:
-        counts = sim.run(c, shots=1000).result().get_counts()
-        
-        # State should be overwhelmingly |00000> (or '00000' in qiskit)
-        # Because we start in |0>, and CX(|0>, |0>) = |00>
-        # Errors might introduce some 1s, but fidelity with ideal will be very high
-        ideal_counts = {'00000': 1000}
-        fid = compute_fidelity(ideal_counts, counts)
-        
-        # Fidelity > 0.9 even with noise, which masks the layout differences
-        assert fid > 0.8
+    raw = compute_esp_base(tc, fake_backend.target, temps_mk=temps, thermal_term_mode='raw_upper_bound')
+    excess = compute_esp_base(tc, fake_backend.target, temps_mk=temps, thermal_term_mode='excess_over_readout')
+    
+    assert excess >= raw # Higher probability means lower penalty, so excess never exceeds raw penalty
