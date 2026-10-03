@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 results/raw_private/
 .ipynb_checkpoints/
+results/sim/*raw*.csv
+results/sim/phase_3_sweep*.csv
