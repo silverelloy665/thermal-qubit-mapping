@@ -1,0 +1,32 @@
+{
+    "job_id": "89e4272a-4a7d-4bc7-a0cf-d8e12c45460a",
+    "backend": "fake_vigo",
+    "calibration_timestamp": "2026-10-04 01:29:15.317554",
+    "qubit_data": {
+        "0": {
+            "p1_estimate": 0.084228515625,
+            "readout_asymmetry": 0.010009765625,
+            "target_readout_error": 0.07509999999999994
+        },
+        "1": {
+            "p1_estimate": 0.00830078125,
+            "readout_asymmetry": -0.030029296875,
+            "target_readout_error": 0.022499999999999964
+        },
+        "2": {
+            "p1_estimate": 0.005615234375,
+            "readout_asymmetry": -0.0205078125,
+            "target_readout_error": 0.014599999999999946
+        },
+        "3": {
+            "p1_estimate": 0.016357421875,
+            "readout_asymmetry": -0.01025390625,
+            "target_readout_error": 0.021500000000000075
+        },
+        "4": {
+            "p1_estimate": 0.021240234375,
+            "readout_asymmetry": -0.026123046875,
+            "target_readout_error": 0.033299999999999996
+        }
+    }
+}
