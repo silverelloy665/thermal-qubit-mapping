@@ -24,23 +24,37 @@ def get_hot_qubits(target, fraction, seed):
 
 def compact_circuit(tc, target, temps_mk, active_qubits):
     mapping = {q: i for i, q in enumerate(active_qubits)}
+    
+    # Create compact circuit with exact same classical registers
     compact_qc = QuantumCircuit(len(active_qubits))
+    for creg in tc.cregs:
+        compact_qc.add_register(creg)
     
     for inst in tc.data:
-        if inst.operation.name in ['barrier', 'delay', 'measure']: continue
+        if inst.operation.name in ['barrier', 'delay']: continue
         qargs = [mapping[tc.find_bit(q).index] for q in inst.qubits]
-        compact_qc.append(inst.operation, qargs)
-        
+        if inst.operation.name == 'measure':
+            cargs = [tc.find_bit(c).index for c in inst.clbits]
+            # In Qiskit, measure takes qubits and clbits.
+            # We can use the operation directly, or just append it.
+            # Actually inst.operation is a Measure object.
+            # We must pass the correct clbits from the new circuit.
+            # But we added the exact same cregs, so the clbits are exactly the same!
+            compact_qc.append(inst.operation, qargs, inst.clbits)
+        else:
+            compact_qc.append(inst.operation, qargs)
+            
     compact_temps = {mapping[q]: t for q, t in temps_mk.items() if q in active_qubits} if temps_mk else None
     
     # We build a Fake target for the active subset
-    from qiskit.transpiler import Target, InstructionProperties
+    from qiskit.transpiler import Target
+    from qiskit.providers import QubitProperties
     compact_target = Target(num_qubits=len(active_qubits))
     
     gathered_props = {}
     for inst, qargs in target.instructions:
         inst_name = inst.name
-        if inst_name in ['barrier', 'delay', 'measure', 'reset']: continue
+        if inst_name in ['barrier', 'delay', 'reset']: continue
         if qargs is None: continue
         
         if all(q in active_qubits for q in qargs):
@@ -54,21 +68,12 @@ def compact_circuit(tc, target, temps_mk, active_qubits):
     for inst_name, (inst, props_dict) in gathered_props.items():
         compact_target.add_instruction(inst, props_dict)
                 
-    measure_props = {}
-    for q in active_qubits:
-        try:
-            measure_props[(mapping[q],)] = target['measure'][(q,)]
-        except Exception: pass
-        
-        if getattr(target, 'qubit_properties', None):
-            if compact_target.qubit_properties is None:
-                compact_target.qubit_properties = [QubitProperties()] * len(active_qubits)
+    if getattr(target, 'qubit_properties', None):
+        compact_target.qubit_properties = [QubitProperties()] * len(active_qubits)
+        for q in active_qubits:
             compact_target.qubit_properties[mapping[q]] = target.qubit_properties[q]
-    if measure_props:
-        compact_target.add_instruction(target.operation_from_name('measure'), measure_props)
             
     compact_nm = build_thermal_noise_model(compact_target, temps_mk=compact_temps)
-    compact_qc.measure_all()
     return compact_qc, compact_nm
 
 def run_sim(resume=False):
@@ -87,6 +92,8 @@ def run_sim(resume=False):
     hot_fractions = [0, 0.2, 0.4]
     profile_seeds = [0, 1, 2]
     sim_seeds = list(range(20))
+    config_shots = config.get('experiment', {}).get('shots', 8192)
+    ideal_probs_cache = {}
     
     out_file = Path('results/sim/phase_3_sweep.csv')
     os.makedirs(out_file.parent, exist_ok=True)
@@ -185,23 +192,35 @@ def run_sim(resume=False):
                                     compact_qc, compact_nm = compact_circuit(tc, target, temps_mk, active_qs)
                                     sim = AerSimulator(noise_model=compact_nm)
                                     
-                                    # Ideal
-                                    ideal_tc = transpile(qc, backend, optimization_level=0)
-                                    ideal_counts = AerSimulator().run(ideal_tc, shots=1000).result().get_counts()
+                                    if b_name not in ideal_probs_cache:
+                                        from qiskit.quantum_info import Statevector
+                                        qc_no_meas = qc.remove_final_measurements(inplace=False)
+                                        meas_qargs = [None] * qc.num_clbits
+                                        for inst in qc.data:
+                                            if inst.operation.name == 'measure':
+                                                for q, c in zip(inst.qubits, inst.clbits):
+                                                    meas_qargs[qc.find_bit(c).index] = qc.find_bit(q).index
+                                        sv = Statevector(qc_no_meas)
+                                        probs = sv.probabilities_dict(qargs=meas_qargs)
+                                        ideal_probs_cache[b_name] = {k: v for k, v in probs.items() if v > 1e-10}
+                                    
+                                    ideal_probs = ideal_probs_cache[b_name]
                                     
                                     for s_seed in sim_seeds:
                                         key = f"{backend.name}_{N}_{b_name}_{bg_T}_{hot_frac}_{p_seed}_{m_name}_{draw_id}_{s_seed}"
                                         if key in done_keys: continue
                                         
-                                        counts = sim.run(compact_qc, shots=1000, seed_simulator=s_seed).result().get_counts()
+                                        counts = sim.run(compact_qc, shots=config_shots, seed_simulator=s_seed).result().get_counts()
                                         
                                         if metric_type == 'success_prob':
-                                            ideal_state = max(ideal_counts, key=ideal_counts.get)
-                                            val = counts.get(ideal_state, 0) / sum(counts.values()) if counts else 0.0
+                                            # Sum probability of all states with significant ideal probability (support)
+                                            # For GHZ this is P(00..0)+P(11..1) which are the only ones > 1e-10
+                                            # For BV this is the secret string state
+                                            val = sum(counts.get(k, 0) for k in ideal_probs.keys()) / config_shots if counts else 0.0
                                         else:
                                             from qiskit.quantum_info import hellinger_fidelity
                                             def norm(c): return {k: v/sum(c.values()) for k, v in c.items()}
-                                            val = hellinger_fidelity(norm(ideal_counts), norm(counts)) if counts else 0.0
+                                            val = hellinger_fidelity(ideal_probs, norm(counts)) if counts else 0.0
                                             
                                         cached_metrics[key] = val
                                         row = f"{backend.name},{N},{b_name},{bg_T},{hot_frac},{hot_T},{stress},{p_seed},\"{hot_qs}\",{m_name},{o_lvl},{thermal_mode},{draw_id},{s_seed},{metric_type},{val},{esp_standard(tc, target)},{esp_thermal(tc, target, p1=temps_mk)},{esp_thermal_gate(tc, target, p1=temps_mk)},{m_sec},{count_native_2q(tc, target)},{tc.depth()},\"{lay}\"\n"
