@@ -7,13 +7,12 @@ from qiskit_ibm_runtime.fake_provider import FakeVigoV2
 from src.metrics.esp import esp_standard, esp_thermal, get_p1
 from src.mappers.mappers import get_connected_subgraphs
 
-def debug(hot_q):
+def debug():
     backend = FakeVigoV2()
     target = backend.target
     temps_mk = {q: 15 for q in range(target.num_qubits)}
-    temps_mk[hot_q] = 120
+    temps_mk[1] = 120
     
-    print(f"\n--- Hot Qubit: Q{hot_q} ---")
     print("p1 per qubit:")
     for q in range(target.num_qubits):
         print(f"  Q{q}: {get_p1(q, target, temps_mk=temps_mk):.4f}")
@@ -37,8 +36,6 @@ def debug(hot_q):
         
     print(f"\nArgmax esp_standard: {argmax_std} ({best_std:.4f})")
     print(f"Argmax esp_thermal: {argmax_th} ({best_th:.4f})")
-    print(f"Argmax changed: {argmax_std != argmax_th}")
 
 if __name__ == '__main__':
-    debug(4)
-    debug(0)
+    debug()
