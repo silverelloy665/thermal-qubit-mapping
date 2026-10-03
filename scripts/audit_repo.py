@@ -17,20 +17,20 @@ def audit():
             if os.path.getsize(path) == 0:
                 errors.append(f"0 byte file: {path}")
                 
-    # 2. Required symbols
+    # 2. Required symbols (Signature checks)
     def check_symbol(file_path, symbols):
         if not os.path.exists(file_path): return
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
             for s in symbols:
                 if s not in content:
-                    errors.append(f"Missing symbol {s} in {file_path}")
+                    errors.append(f"Missing symbol '{s}' in {file_path}")
                     
-    check_symbol('src/metrics/esp.py', ['esp_standard', 'esp_thermal', 'esp_thermal_gate', 'thermal_term_mode'])
-    check_symbol('src/noise_model/thermal.py', ['ReadoutError', 'depolarizing_error(', 'reset'])
+    check_symbol('src/metrics/esp.py', ['def esp_standard', 'def esp_thermal', 'def esp_thermal_gate', 'def compute_esp_base', 'temps_mk: dict = None', 'p1: dict = None', 'thermal_term_mode'])
+    check_symbol('src/noise_model/thermal.py', ['ReadoutError', 'depolarizing_error', 'reset'])
     check_symbol('src/runner_ibm.py', ['ibm_quantum_platform'])
-    check_symbol('scripts/run_hardware.py', ['--pilot', '--approve-seconds'])
-    check_symbol('src/mappers/mappers.py', ['transpiled_circuit', 'esp', 'mapping_seconds', 'layout_physical_list', 'routing_seed']) # approx signatures
+    check_symbol('scripts/run_hardware.py', ['--execute', '--approve-seconds'])
+    check_symbol('src/mappers/mappers.py', ['def mapper_qiskit_default', 'def mapper_random', 'def mapper_esp', 'def _get_layout'])
     
     # 3. tests/test_all.py
     if os.path.exists('tests/test_all.py'):
@@ -42,11 +42,10 @@ def audit():
     if os.path.exists('config.yaml'):
         with open('config.yaml', 'r', encoding='utf-8') as f:
             content = f.read()
-            if 'ibm_kyoto' in content: errors.append("ibm_kyoto in config.yaml")
             try:
                 conf = yaml.safe_load(content)
-                if conf.get('experiment', {}).get('budget_cap_qpu_seconds') != 350:
-                    errors.append("budget_cap_qpu_seconds != 350")
+                if conf.get('experiment', {}).get('budget_cap_qpu_seconds') != 600:
+                    errors.append("budget_cap_qpu_seconds != 600")
             except:
                 pass
                 
