@@ -71,6 +71,9 @@ def build_thermal_noise_model(target: Target, temps_mk: dict = None, p1_dict: di
     return noise_model
 
 if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    sys.path.append(str(Path(__file__).parent.parent.parent))
     from qiskit import QuantumCircuit, transpile
     from qiskit_aer import AerSimulator
     from qiskit.providers.fake_provider import GenericBackendV2
