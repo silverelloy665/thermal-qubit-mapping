@@ -3,18 +3,15 @@ import random
 import time
 import math
 import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Tuple
 from qiskit import QuantumCircuit, transpile
 from qiskit.transpiler import Target
 import rustworkx as rx
-
-from src.metrics.esp import compute_esp
+from src.metrics.esp import esp_standard, esp_thermal, get_p1, load_config
 
 def get_connected_subgraphs(target: Target, k: int) -> List[List[int]]:
     num_qubits = target.num_qubits
-    if k > num_qubits:
-        return []
-    
+    if k > num_qubits: return []
     graph = rx.PyGraph()
     graph.add_nodes_from(range(num_qubits))
     edges = []
@@ -23,7 +20,6 @@ def get_connected_subgraphs(target: Target, k: int) -> List[List[int]]:
     graph.add_edges_from_no_data(edges)
     
     subgraphs = set()
-    
     def dfs(current_subgraph, neighbors):
         if len(current_subgraph) == k:
             subgraphs.add(tuple(sorted(current_subgraph)))
@@ -32,93 +28,118 @@ def get_connected_subgraphs(target: Target, k: int) -> List[List[int]]:
             new_subgraph = current_subgraph | {node}
             new_neighbors = (neighbors | set(graph.neighbors(node))) - new_subgraph
             dfs(new_subgraph, new_neighbors)
-            
     for i in range(num_qubits):
         dfs({i}, set(graph.neighbors(i)))
-        
     return [list(sg) for sg in subgraphs]
 
-def transpile_with_routing_seeds(circuit: QuantumCircuit, target: Target, layout: list, routing_seeds: int = 3, use_thermal: bool = False, temps_mk: dict = None) -> Tuple[QuantumCircuit, float]:
-    best_tc = None
-    best_esp = -1.0
-    
-    for r_seed in range(routing_seeds):
-        tc = transpile(
-            circuit,
-            target=target,
-            initial_layout=layout,
-            routing_method='sabre',
-            optimization_level=1,
-            seed_transpiler=r_seed
-        )
-        esp_std, esp_th = compute_esp(tc, target, temps_mk)
-        score = esp_th if use_thermal else esp_std
-        if score > best_esp:
-            best_esp = score
-            best_tc = tc
-            
-    return best_tc, best_esp
+def rank_subgraphs(subgraphs: List[List[int]], target: Target, use_thermal: bool, temps_mk: dict = None, p1: dict = None) -> List[List[int]]:
+    scored = []
+    for sg in subgraphs:
+        score = 1.0
+        for q in sg:
+            try:
+                err = target['measure'].get((q,), None)
+                if err and getattr(err, 'error', None): score *= max(0.0, 1.0 - err.error)
+            except KeyError: pass
+        if use_thermal:
+            for q in sg:
+                p = get_p1(q, target, p1, temps_mk)
+                if p > 0: score *= ((1.0 - p) ** 2)
+        for i in range(len(sg)):
+            for j in range(i+1, len(sg)):
+                q1, q2 = sg[i], sg[j]
+                for inst_name in ['cx', 'ecr', 'cz']:
+                    try:
+                        err1 = getattr(target[inst_name].get((q1, q2), None), 'error', 0.0) or 0.0
+                        err2 = getattr(target[inst_name].get((q2, q1), None), 'error', 0.0) or 0.0
+                        avg = (err1 + err2) / 2.0
+                        if avg > 0:
+                            score *= max(0.0, 1.0 - avg)
+                            break
+                    except KeyError: pass
+        scored.append((score, sg))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [x[1] for x in scored[:50]]
 
-def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, seed: int = 42, routing_seeds: int = 3) -> List[QuantumCircuit]:
+def _get_layout(tc: QuantumCircuit, n: int) -> list:
+    if getattr(tc, 'layout', None) and getattr(tc.layout, 'initial_layout', None):
+        try:
+            return [tc.layout.initial_layout[q] for q in tc.qubits]
+        except KeyError:
+            return [tc.layout.initial_layout[q] for q in tc.layout.initial_layout.get_virtual_bits()]
+    return list(range(n))
+
+def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, seed: int = 42, routing_seeds: int = 3, opt_level: int = 3) -> List[Tuple[QuantumCircuit, float, float, list, int]]:
     random.seed(seed)
     subgraphs = get_connected_subgraphs(target, circuit.num_qubits)
-    if not subgraphs:
-        subgraphs = [random.sample(range(target.num_qubits), circuit.num_qubits) for _ in range(num_draws)]
+    if not subgraphs: subgraphs = [list(range(circuit.num_qubits))]
     
-    circuits = []
+    results = []
     for i in range(num_draws):
+        start = time.time()
         sg = random.choice(subgraphs)
         perm = list(sg)
         random.shuffle(perm)
-        tc, _ = transpile_with_routing_seeds(circuit, target, perm, routing_seeds=routing_seeds)
-        circuits.append(tc)
-    return circuits
+        
+        best_tc = None
+        best_esp = -1.0
+        best_r_seed = 0
+        for r_seed in range(routing_seeds):
+            tc = transpile(circuit, target=target, initial_layout=perm, routing_method='sabre', optimization_level=opt_level, seed_transpiler=r_seed)
+            esp = esp_standard(tc, target)
+            if esp > best_esp:
+                best_esp = esp; best_tc = tc; best_r_seed = r_seed
+        
+        lay = _get_layout(best_tc, circuit.num_qubits)
+        results.append((best_tc, best_esp, time.time() - start, lay, best_r_seed))
+    return results
 
-def mapper_qiskit_default(circuit: QuantumCircuit, target: Target, level: int, seed: int = 42) -> QuantumCircuit:
-    return transpile(
-        circuit,
-        target=target,
-        optimization_level=level,
-        seed_transpiler=seed
-    )
+def mapper_qiskit_default(circuit: QuantumCircuit, target: Target, level: int, seed: int = 42) -> Tuple[QuantumCircuit, float, float, list, int]:
+    start = time.time()
+    tc = transpile(circuit, target=target, optimization_level=level, seed_transpiler=seed)
+    esp = esp_standard(tc, target)
+    lay = _get_layout(tc, circuit.num_qubits)
+    return tc, esp, time.time() - start, lay, seed
 
-def mapper_esp(circuit: QuantumCircuit, target: Target, temps_mk: dict = None, 
-               use_thermal: bool = False, exhaustive: bool = False, seed: int = 42, routing_seeds: int = 3, max_candidate_layouts: int = 200) -> Tuple[QuantumCircuit, float, float]:
+def mapper_esp(circuit: QuantumCircuit, target: Target, temps_mk: dict = None, p1: dict = None,
+               use_thermal: bool = False, exhaustive: bool = False, seed: int = 42, routing_seeds: int = 3, max_candidate_layouts: int = 200, opt_level: int = 3) -> Tuple[QuantumCircuit, float, float, list, int]:
     start_time = time.time()
     subgraphs = get_connected_subgraphs(target, circuit.num_qubits)
-    best_tc = None
-    best_esp = -1.0
+    subgraphs = rank_subgraphs(subgraphs, target, use_thermal, temps_mk, p1)
     
     search_layouts = []
-    if exhaustive and len(subgraphs) * math.factorial(circuit.num_qubits) < 5000:
+    if exhaustive and len(subgraphs) * math.factorial(circuit.num_qubits) <= max_candidate_layouts:
         for sg in subgraphs:
-            for p in itertools.permutations(sg):
-                search_layouts.append(list(p))
+            for perm in itertools.permutations(sg):
+                search_layouts.append(list(perm))
     else:
         random.seed(seed)
-        for _ in range(max_candidate_layouts):
+        seen = set()
+        for _ in range(max_candidate_layouts * 10):
+            if len(search_layouts) >= max_candidate_layouts: break
             sg = random.choice(subgraphs)
             perm = list(sg)
             random.shuffle(perm)
-            search_layouts.append(perm)
-            
-    unique_layouts = []
-    seen = set()
-    for lay in search_layouts:
-        t = tuple(lay)
-        if t not in seen:
-            seen.add(t)
-            unique_layouts.append(lay)
-            
-    for layout in unique_layouts:
-        tc, score = transpile_with_routing_seeds(circuit, target, layout, routing_seeds, use_thermal, temps_mk)
-        if score > best_esp:
-            best_esp = score
-            best_tc = tc
-            
+            if tuple(perm) not in seen:
+                seen.add(tuple(perm))
+                search_layouts.append(perm)
+                
+    best_tc = None
+    best_esp = -1.0
+    best_r_seed = 0
+    
+    eval_fn = lambda c: esp_thermal(c, target, p1, mode=None) if use_thermal else esp_standard(c, target)
+    
+    for layout in search_layouts:
+        for r_seed in range(routing_seeds):
+            tc = transpile(circuit, target=target, initial_layout=layout, routing_method='sabre', optimization_level=opt_level, seed_transpiler=r_seed)
+            score = eval_fn(tc)
+            if score > best_esp:
+                best_esp = score; best_tc = tc; best_r_seed = r_seed
+                
     if best_tc is None:
-        best_tc = transpile(circuit, target=target, optimization_level=1, seed_transpiler=seed)
-        best_esp = compute_esp(best_tc, target, temps_mk)[1 if use_thermal else 0]
+        best_tc = transpile(circuit, target=target, optimization_level=opt_level, seed_transpiler=seed)
+        best_esp = eval_fn(best_tc)
         
-    elapsed = time.time() - start_time
-    return best_tc, best_esp, elapsed
+    lay = _get_layout(best_tc, circuit.num_qubits)
+    return best_tc, best_esp, time.time() - start_time, lay, best_r_seed
