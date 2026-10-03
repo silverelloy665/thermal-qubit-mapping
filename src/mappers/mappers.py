@@ -61,13 +61,13 @@ def rank_subgraphs(subgraphs: List[List[int]], target: Target, use_thermal: bool
     scored.sort(key=lambda x: x[0], reverse=True)
     return [x[1] for x in scored[:50]]
 
-def _get_layout(tc: QuantumCircuit, n: int) -> list:
+def _get_layout(tc: QuantumCircuit, original_circuit: QuantumCircuit) -> list:
     if getattr(tc, 'layout', None) and getattr(tc.layout, 'initial_layout', None):
         try:
-            return [tc.layout.initial_layout[q] for q in tc.qubits]
+            return [tc.layout.initial_layout[q] for q in original_circuit.qubits]
         except KeyError:
-            return [tc.layout.initial_layout[q] for q in tc.layout.initial_layout.get_virtual_bits()]
-    return list(range(n))
+            pass
+    return list(range(original_circuit.num_qubits))
 
 def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, seed: int = 42, routing_seeds: int = 3, opt_level: int = 3) -> List[Tuple[QuantumCircuit, float, float, list, int]]:
     random.seed(seed)
@@ -90,7 +90,7 @@ def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, 
             if esp > best_esp:
                 best_esp = esp; best_tc = tc; best_r_seed = r_seed
         
-        lay = _get_layout(best_tc, circuit.num_qubits)
+        lay = _get_layout(best_tc, circuit)
         results.append((best_tc, best_esp, time.time() - start, lay, best_r_seed))
     return results
 
@@ -98,7 +98,7 @@ def mapper_qiskit_default(circuit: QuantumCircuit, target: Target, level: int, s
     start = time.time()
     tc = transpile(circuit, target=target, optimization_level=level, seed_transpiler=seed)
     esp = esp_standard(tc, target)
-    lay = _get_layout(tc, circuit.num_qubits)
+    lay = _get_layout(tc, circuit)
     return tc, esp, time.time() - start, lay, seed
 
 def mapper_esp(circuit: QuantumCircuit, target: Target, temps_mk: dict = None, p1: dict = None,
@@ -141,5 +141,5 @@ def mapper_esp(circuit: QuantumCircuit, target: Target, temps_mk: dict = None, p
         best_tc = transpile(circuit, target=target, optimization_level=opt_level, seed_transpiler=seed)
         best_esp = eval_fn(best_tc)
         
-    lay = _get_layout(best_tc, circuit.num_qubits)
+    lay = _get_layout(best_tc, circuit)
     return best_tc, best_esp, time.time() - start_time, lay, best_r_seed
