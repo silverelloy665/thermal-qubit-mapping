@@ -111,14 +111,56 @@ def analyze():
                             'esp_thermal_gate': 'first'
                         }).reset_index()
                         
-                        if len(agg_rand) >= 2:
+                        if len(agg_rand) >= 20:
                             r_std, p_std = stats.spearmanr(agg_rand['esp_standard'], agg_rand['metric_val'])
                             r_thm, p_thm = stats.spearmanr(agg_rand['esp_thermal'], agg_rand['metric_val'])
                             r_thm_gate, p_thm_gate = stats.spearmanr(agg_rand['esp_thermal_gate'], agg_rand['metric_val'])
                             print("This checks consistency, since ESP and Aer read the same Target numbers.")
-                            print(f"  esp_standard     vs {metric_type}: r={r_std:.3f} (p={p_std:.3e})")
-                            print(f"  esp_thermal      vs {metric_type}: r={r_thm:.3f} (p={p_thm:.3e})")
-                            print(f"  esp_thermal_gate vs {metric_type}: r={r_thm_gate:.3f} (p={p_thm_gate:.3e})")
+                            print(f"  esp_standard     vs {metric_type}: r={r_std:.3f} (p={p_std:.3e}) (n={len(agg_rand)})")
+                            print(f"  esp_thermal      vs {metric_type}: r={r_thm:.3f} (p={p_thm:.3e}) (n={len(agg_rand)})")
+                            print(f"  esp_thermal_gate vs {metric_type}: r={r_thm_gate:.3f} (p={p_thm_gate:.3e}) (n={len(agg_rand)})")
+                        else:
+                            print(f"  Skipping Spearman, n={len(agg_rand)} < 20")
+                            
+    # "Print the lowest background T where esp_thermal's layout differs from esp_no_thermal, or never"
+    print("\n--- Thermal Profile Changes (fake_guadalupe) ---")
+    guad = df[df['device'] == 'fake_guadalupe']
+    for b_name in guad['benchmark'].unique():
+        b_data = guad[guad['benchmark'] == b_name]
+        changed_T = None
+        diff_data1 = []
+        diff_data2 = []
+        for bg_T in sorted(b_data['bg_T'].unique()):
+            sub_bg = b_data[b_data['bg_T'] == bg_T]
+            for hot_frac in [0.2, 0.4]:
+                sub_hot = sub_bg[sub_bg['hot_frac'] == hot_frac]
+                for p_seed in sub_hot['profile_seed'].unique():
+                    cell = sub_hot[sub_hot['profile_seed'] == p_seed]
+                    th = cell[cell['method'] == 'esp_thermal']
+                    no_th = cell[cell['method'] == 'esp_no_thermal']
+                    if th.empty or no_th.empty: continue
+                    lay_th = th['layout'].iloc[0]
+                    lay_no_th = no_th['layout'].iloc[0]
+                    if lay_th != lay_no_th:
+                        if changed_T is None: changed_T = bg_T
+                        # Collect paired differences for ALL changed cells
+                        # Align by sim_seed
+                        merged = pd.merge(th, no_th, on=['sim_seed', 'draw_id'], suffixes=('_th', '_noth'))
+                        diff_data1.extend(merged['metric_val_th'].values)
+                        diff_data2.extend(merged['metric_val_noth'].values)
+        
+        print(f"\nBenchmark: {b_name}")
+        if changed_T is None:
+            print("  Lowest background T with layout change: never")
+        else:
+            print(f"  Lowest background T with layout change: {changed_T} mK")
+            d1 = np.array(diff_data1)
+            d2 = np.array(diff_data2)
+            if len(d1) > 1:
+                mean_diff = (d1 - d2).mean()
+                ci_l, ci_h = bootstrap_paired(d1, d2)
+                print(f"  Paired fidelity diff (esp_thermal - esp_no_thermal) in changed cells:")
+                print(f"    {mean_diff:+.4f} [{ci_l:+.4f}, {ci_h:+.4f}]")
 
 if __name__ == '__main__':
     analyze()

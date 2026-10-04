@@ -51,7 +51,7 @@ def get_qaoa(n: int) -> QuantumCircuit:
     qc.measure_all()
     return qc
 
-def get_routing_pressure(n: int) -> QuantumCircuit:
+def get_routing_old(n: int) -> QuantumCircuit:
     """Circuit with long range CX gates to stress routing."""
     qc = QuantumCircuit(n)
     qc.h(range(n))
@@ -62,13 +62,25 @@ def get_routing_pressure(n: int) -> QuantumCircuit:
     qc.measure_all()
     return qc
 
+def get_routing(n: int) -> QuantumCircuit:
+    """New routing benchmark: H layer on all, then long-range CX."""
+    qc = QuantumCircuit(n)
+    qc.h(range(n))
+    # E.g. for n=4: cx(0,3), cx(1,2)
+    # E.g. for n=5: cx(0,4), cx(1,3)
+    for i in range(n // 2):
+        qc.cx(i, n - 1 - i)
+    qc.measure_all()
+    return qc
+
 def get_all_benchmarks(n: int):
     return {
         'ghz': get_ghz(n),
         'bv': get_bv_n(n),
         'qft': get_qft(n),
         'qaoa': get_qaoa(n),
-        'routing': get_routing_pressure(n)
+        'routing': get_routing(n),
+        'routing_old': get_routing_old(n)
     }
 
 # Fix BV to use n qubits total (n-1 data, 1 target)

@@ -82,12 +82,23 @@ def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, 
     subgraphs = get_connected_subgraphs(target, circuit.num_qubits)
     if not subgraphs: subgraphs = [list(range(circuit.num_qubits))]
     
+    # Generate all possible permutations from the valid subgraphs
+    all_layouts = []
+    for sg in subgraphs:
+        for perm in itertools.permutations(sg):
+            all_layouts.append(list(perm))
+            
+    if len(all_layouts) <= num_draws:
+        # Use all available layouts
+        draws = all_layouts
+        print(f"  -> Using all {len(all_layouts)} available distinct layouts.")
+    else:
+        # Sample uniquely
+        draws = random.sample(all_layouts, max(num_draws, 50))
+        
     results = []
-    for i in range(num_draws):
+    for perm in draws:
         start = time.time()
-        sg = random.choice(subgraphs)
-        perm = list(sg)
-        random.shuffle(perm)
         
         best_tc = None
         best_esp = -1.0
@@ -162,3 +173,16 @@ def mapper_esp(circuit: QuantumCircuit, target: Target, temps_mk: dict = None, p
     if active_qubits:
         assert active_qubits.issubset(set(lay)), f"Active qubits {active_qubits} exceed chosen layout {lay}"
     return best_tc, best_esp, time.time() - start_time, lay, best_r_seed
+
+def mapper_qiskit_best3(circuit: QuantumCircuit, target: Target, level: int = 3, routing_seeds: int = 3) -> Tuple[QuantumCircuit, float, float, list, int]:
+    start = time.time()
+    best_tc = None
+    best_esp = -1.0
+    best_r_seed = 0
+    for r_seed in range(routing_seeds):
+        tc = transpile(circuit, target=target, optimization_level=level, seed_transpiler=r_seed)
+        esp = esp_standard(tc, target)
+        if esp > best_esp:
+            best_esp = esp; best_tc = tc; best_r_seed = r_seed
+    lay = _get_layout(best_tc, circuit)
+    return best_tc, best_esp, time.time() - start, lay, best_r_seed
