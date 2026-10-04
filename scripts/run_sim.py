@@ -88,9 +88,9 @@ def run_sim(resume=False, smoke=False):
     backends = [FakeVigoV2()]
     Ns = [3, 4, 5]
     benchmarks_list = ['ghz', 'bv', 'qft', 'qaoa', 'routing']
-    bg_temps = [15, 50, 80, 120]
-    hot_fractions = [0, 0.2, 0.4]
-    profile_seeds = [0, 1, 2]
+    bg_temps = [15]
+    hot_fractions = [0.0, 0.2]
+    profile_seeds = [0]
     sim_seeds = list(range(20))
     
     if smoke:
@@ -225,7 +225,7 @@ def run_sim(resume=False, smoke=False):
                                     compact_qc, compact_nm = compact_circuit(tc, target, temps_mk, active_qs)
                                     sim = AerSimulator(noise_model=compact_nm)
                                     
-                                    if b_name not in ideal_probs_cache:
+                                    if (b_name, N) not in ideal_probs_cache:
                                         from qiskit.quantum_info import Statevector
                                         qc_no_meas = qc.remove_final_measurements(inplace=False)
                                         meas_qargs = [None] * qc.num_clbits
@@ -235,9 +235,9 @@ def run_sim(resume=False, smoke=False):
                                                     meas_qargs[qc.find_bit(c).index] = qc.find_bit(q).index
                                         sv = Statevector(qc_no_meas)
                                         probs = sv.probabilities_dict(qargs=meas_qargs)
-                                        ideal_probs_cache[b_name] = {k: v for k, v in probs.items() if v > 1e-10}
+                                        ideal_probs_cache[(b_name, N)] = {k: v for k, v in probs.items() if v > 1e-10}
                                     
-                                    ideal_probs = ideal_probs_cache[b_name]
+                                    ideal_probs = ideal_probs_cache[(b_name, N)]
                                     
                                     for s_seed in sim_seeds:
                                         key = f"{backend.name}_{N}_{b_name}_{bg_T}_{hot_frac}_{p_seed}_{m_name}_{draw_id}_{s_seed}"
@@ -262,7 +262,7 @@ def run_sim(resume=False, smoke=False):
                                         done_keys.add(key)
                                         
                 print(f"  Completed cell in {time.time() - cell_t0:.1f}s")
-                if smoke: return
+                
                                         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -275,3 +275,5 @@ if __name__ == '__main__':
         run_sim(resume=args.resume, smoke=args.smoke)
     else:
         run_sim(resume=args.resume, smoke=args.smoke)
+
+
