@@ -94,7 +94,9 @@ def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, 
         print(f"  -> Using all {len(all_layouts)} available distinct layouts.")
     else:
         # Sample uniquely
-        draws = random.sample(all_layouts, max(num_draws, 50))
+        target_draws = max(num_draws, 50)
+        target_draws = min(target_draws, len(all_layouts))
+        draws = random.sample(all_layouts, target_draws)
         
     results = []
     for perm in draws:

@@ -299,11 +299,17 @@ def run_sweep():
                                         
                                     ideal_probs = ideal_probs_cache[(b_name, N)]
                                     
-                                    for s_seed in cfg['sim_seeds']:
+                                    missing_seeds = [s for s in cfg['sim_seeds'] if f"{backend.name}_{N}_{b_name}_{bg_T}_{hot_frac}_{p_seed}_{m_name}_{draw_id}_{s}" not in done_keys]
+                                    if not missing_seeds: continue
+                                    
+                                    # Batch execute
+                                    qcs_to_run = [compact_qc] * len(missing_seeds)
+                                    res = sim.run(qcs_to_run, shots=8192, seed_simulator=missing_seeds[0]).result()
+                                    counts_list = res.get_counts()
+                                    if len(missing_seeds) == 1: counts_list = [counts_list]
+                                    
+                                    for s_seed, counts in zip(missing_seeds, counts_list):
                                         key = f"{backend.name}_{N}_{b_name}_{bg_T}_{hot_frac}_{p_seed}_{m_name}_{draw_id}_{s_seed}"
-                                        if key in done_keys: continue
-                                        
-                                        counts = sim.run(compact_qc, shots=8192, seed_simulator=s_seed).result().get_counts()
                                         val = 0.0
                                         if metric_type == 'success_prob':
                                             target_str = "1" * qc.num_clbits
