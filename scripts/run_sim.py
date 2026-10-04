@@ -262,12 +262,12 @@ def run_sim(resume=False, smoke=False):
                                         done_keys.add(key)
                                         
                 print(f"  Completed cell in {time.time() - cell_t0:.1f}s")
-                if smoke: return
                                         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--smoke', action='store_true', help='Run only one cell for a smoke test')
+    parser.add_argument('--step7', action='store_true', help='Step 7 execution')
     args = parser.parse_args()
     
     if args.smoke:
@@ -275,3 +275,18 @@ if __name__ == '__main__':
         run_sim(resume=args.resume, smoke=args.smoke)
     else:
         run_sim(resume=args.resume, smoke=args.smoke)
+        
+    # Aggregate results for Step 7
+    import pandas as pd
+    out_file = 'results/sim/phase_3_sweep.csv'
+    if os.path.exists(out_file):
+        df = pd.read_csv(out_file)
+        print("\n--- Step 7 Aggregation ---")
+        for b_name in df['benchmark'].unique():
+            print(f"\nBenchmark: {b_name}")
+            sub = df[df['benchmark'] == b_name]
+            metric = sub['metric'].iloc[0]
+            print(f"Metric: {metric}")
+            means = sub.groupby('method')['metric_val'].mean().sort_values(ascending=False)
+            for m, val in means.items():
+                print(f"  {m:15s} | {val:.4f}")
