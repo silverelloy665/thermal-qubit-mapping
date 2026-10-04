@@ -242,3 +242,24 @@ def test_m_noisy_equivalence(fake_backend):
     from qiskit.quantum_info import hellinger_fidelity
     def norm(c): return {k: v/sum(c.values()) for k, v in c.items()}
     assert hellinger_fidelity(norm(counts_full), norm(counts_compact)) > 0.95
+
+def test_n_smoke_run_metrics():
+    import pandas as pd
+    import os
+    if not os.path.exists('results/sim/results.csv') and not os.path.exists('results/sim/phase_3_sweep.csv'):
+        return
+    csv_file = 'results/sim/phase_3_sweep.csv'
+    if not os.path.exists(csv_file): csv_file = 'results/sim/results.csv'
+    df = pd.read_csv(csv_file)
+    
+    # Check if any metric_val is exactly 0.0
+    zeros = df[df['metric_val'] == 0.0]
+    assert len(zeros) == 0, f"Found {len(zeros)} exactly zero metrics!"
+    
+    # Check if N=4/5 row counts differ from N=3
+    counts = df.groupby('N').size()
+    if 3 in counts:
+        c3 = counts[3]
+        for n in [4, 5]:
+            if n in counts:
+                assert counts[n] == c3, f"N={n} row count {counts[n]} != N=3 row count {c3}"

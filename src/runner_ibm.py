@@ -48,8 +48,8 @@ def check_pilot_and_approval(total_estimated_seconds, approve_seconds, scale_fil
     if approve_seconds is None:
         raise ValueError(f"Must provide --approve-seconds {math.ceil(total_estimated_seconds)}")
         
-    if approve_seconds < math.ceil(total_estimated_seconds):
-        raise ValueError(f"--approve-seconds {approve_seconds} is less than required {math.ceil(total_estimated_seconds)}")
+    if approve_seconds != math.ceil(total_estimated_seconds):
+        raise ValueError(f"--approve-seconds {approve_seconds} must exactly match required {math.ceil(total_estimated_seconds)}")
         
 def get_scale_estimate(scale_file_path="results/hardware/qpu_scale.json"):
     if not os.path.exists(scale_file_path):

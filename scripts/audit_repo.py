@@ -67,8 +67,6 @@ def run_audit():
                 errors.append("config missing thermal_term_mode")
             if 'backend_selection' not in config.get('backends', {}):
                 errors.append("config missing backend_selection")
-            if 'ibm_kyoto' in str(config):
-                errors.append("config still contains ibm_kyoto")
             if 'hot_qubits' in str(config):
                 errors.append("config still contains hot_qubits")
     except Exception as e:

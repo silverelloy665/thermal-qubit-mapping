@@ -225,7 +225,7 @@ def run_sim(resume=False, smoke=False):
                                     compact_qc, compact_nm = compact_circuit(tc, target, temps_mk, active_qs)
                                     sim = AerSimulator(noise_model=compact_nm)
                                     
-                                    if b_name not in ideal_probs_cache:
+                                    if (b_name, N) not in ideal_probs_cache:
                                         from qiskit.quantum_info import Statevector
                                         qc_no_meas = qc.remove_final_measurements(inplace=False)
                                         meas_qargs = [None] * qc.num_clbits
@@ -235,9 +235,9 @@ def run_sim(resume=False, smoke=False):
                                                     meas_qargs[qc.find_bit(c).index] = qc.find_bit(q).index
                                         sv = Statevector(qc_no_meas)
                                         probs = sv.probabilities_dict(qargs=meas_qargs)
-                                        ideal_probs_cache[b_name] = {k: v for k, v in probs.items() if v > 1e-10}
+                                        ideal_probs_cache[(b_name, N)] = {k: v for k, v in probs.items() if v > 1e-10}
                                     
-                                    ideal_probs = ideal_probs_cache[b_name]
+                                    ideal_probs = ideal_probs_cache[(b_name, N)]
                                     
                                     for s_seed in sim_seeds:
                                         key = f"{backend.name}_{N}_{b_name}_{bg_T}_{hot_frac}_{p_seed}_{m_name}_{draw_id}_{s_seed}"
@@ -282,11 +282,19 @@ if __name__ == '__main__':
     if os.path.exists(out_file):
         df = pd.read_csv(out_file)
         print("\n--- Step 7 Aggregation ---")
-        for b_name in df['benchmark'].unique():
-            print(f"\nBenchmark: {b_name}")
-            sub = df[df['benchmark'] == b_name]
-            metric = sub['metric_type'].iloc[0]
-            print(f"Metric: {metric}")
-            means = sub.groupby('method')['metric_val'].mean().sort_values(ascending=False)
-            for m, val in means.items():
-                print(f"  {m:15s} | {val:.4f}")
+        for metric_type in ['success_prob', 'hellinger_fidelity']:
+            metric_df = df[df['metric_type'] == metric_type]
+            if metric_df.empty: continue
+            print(f"\nMetric: {metric_type}")
+            for b_name in metric_df['benchmark'].unique():
+                for n_val in sorted(metric_df['N'].unique()):
+                    print(f"\nN={n_val}, Benchmark={b_name}")
+                    sub = metric_df[(metric_df['benchmark'] == b_name) & (metric_df['N'] == n_val)]
+                    if sub.empty: continue
+                    aggs = sub.groupby('method').agg(
+                        mean_val=('metric_val', 'mean'),
+                        n_rows=('metric_val', 'size'),
+                        seeds=('sim_seed', 'nunique')
+                    ).sort_values('mean_val', ascending=False)
+                    for m, row in aggs.iterrows():
+                        print(f"  {m:15s} | {row['mean_val']:.4f} (n={int(row['n_rows'])}, seeds={int(row['seeds'])})")
