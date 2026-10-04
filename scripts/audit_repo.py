@@ -69,6 +69,18 @@ def run_audit():
                 errors.append("config missing backend_selection")
             if 'hot_qubits' in str(config):
                 errors.append("config still contains hot_qubits")
+                
+        import glob
+        import re
+        ibm_pattern = re.compile(r'[\'"](ibm_[a-z]+)[\'"]')
+        for filepath in glob.glob('**/*.py', recursive=True) + glob.glob('**/*.yaml', recursive=True):
+            if '.venv' in filepath or '.git' in filepath: continue
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+                matches = ibm_pattern.findall(content)
+                bad_matches = [m for m in matches if m != 'ibm_quantum_platform']
+                if bad_matches:
+                    errors.append(f"Hardcoded backend {bad_matches[0]} found in {filepath}")
     except Exception as e:
         errors.append(f"Config check failed: {e}")
         

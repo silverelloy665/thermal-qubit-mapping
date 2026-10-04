@@ -249,3 +249,51 @@ def test_missing_reference_raises():
     ref_key = 'some_key'
     with pytest.raises(KeyError):
         val = cached_metrics[ref_key]
+
+def test_n_smoke_run_metrics():
+    import pandas as pd
+    import os
+    csv_file = 'results/sim/phase_3_sweep.csv'
+    if not os.path.exists(csv_file): return
+    df = pd.read_csv(csv_file)
+    
+    # Check if any metric_val is exactly 0.0
+    zeros = df[df['metric_val'] == 0.0]
+    assert len(zeros) == 0, f"Found {len(zeros)} exactly zero metrics!"
+    
+    # Check if N=4/5 row counts differ from N=3
+    counts = df.groupby('N').size()
+    if 3 in counts:
+        c3 = counts[3]
+        for n in [4, 5]:
+            if n in counts:
+                assert counts[n] == c3, f"N={n} row count {counts[n]} != N=3 row count {c3}"
+
+def test_pilot_gate(tmp_path):
+    import time, json, pytest
+    from src.runner_ibm import check_pilot_and_approval
+    
+    # Missing file
+    with pytest.raises(ValueError, match="Pilot scale file not found"):
+        check_pilot_and_approval(10.5, 11, scale_file_path=str(tmp_path / "missing.json"))
+        
+    # Stale file
+    stale = tmp_path / "stale.json"
+    with open(stale, "w") as f:
+        json.dump({"timestamp": time.time() - 87000, "qpu_seconds_per_shot": 0.0003}, f)
+    with pytest.raises(ValueError, match="Pilot scale file is older than 24h"):
+        check_pilot_and_approval(10.5, 11, scale_file_path=str(stale))
+        
+    # Correct file
+    good = tmp_path / "good.json"
+    with open(good, "w") as f:
+        json.dump({"timestamp": time.time(), "qpu_seconds_per_shot": 0.0003}, f)
+        
+    # Wrong number
+    with pytest.raises(ValueError, match="must exactly match required"):
+        check_pilot_and_approval(10.5, 12, scale_file_path=str(good))
+    with pytest.raises(ValueError, match="must exactly match required"):
+        check_pilot_and_approval(10.5, 10, scale_file_path=str(good))
+        
+    # Correct number (no error)
+    check_pilot_and_approval(10.5, 11, scale_file_path=str(good))
