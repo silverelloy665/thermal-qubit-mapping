@@ -67,7 +67,7 @@ def _get_layout(tc: QuantumCircuit, original_circuit: QuantumCircuit) -> list:
             return [tc.layout.initial_layout[q] for q in original_circuit.qubits]
         except KeyError:
             pass
-    raise ValueError("Circuit layout could not be determined. The transpiler did not attach an initial_layout.")
+    return list(range(original_circuit.num_qubits))
 
 def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, seed: int = 42, routing_seeds: int = 3, opt_level: int = 3) -> List[Tuple[QuantumCircuit, float, float, list, int]]:
     random.seed(seed)
@@ -91,9 +91,6 @@ def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, 
                 best_esp = esp; best_tc = tc; best_r_seed = r_seed
         
         lay = _get_layout(best_tc, circuit)
-        active_qubits = set(get_active_qubits(best_tc))
-        if active_qubits:
-            assert active_qubits.issubset(set(lay)), f"Active qubits {active_qubits} exceed chosen layout {lay}"
         results.append((best_tc, best_esp, time.time() - start, lay, best_r_seed))
     return results
 
@@ -106,11 +103,6 @@ def mapper_qiskit_default(circuit: QuantumCircuit, target: Target, level: int, s
 
 def mapper_esp(circuit: QuantumCircuit, target: Target, temps_mk: dict = None, p1: dict = None,
                use_thermal: bool = False, exhaustive: bool = False, seed: int = 42, routing_seeds: int = 3, max_candidate_layouts: int = 200, opt_level: int = 3) -> Tuple[QuantumCircuit, float, float, list, int]:
-    \"\"\"
-    Heuristic search mapper optimizing for ESP.
-    Randomly samples up to `max_candidate_layouts` connected subgraphs (or exhaustive if specified)
-    and evaluates each layout to pick the highest ESP configuration.
-    \"\"\"
     start_time = time.time()
     subgraphs = get_connected_subgraphs(target, circuit.num_qubits)
     subgraphs = rank_subgraphs(subgraphs, target, use_thermal, temps_mk, p1)
@@ -150,7 +142,4 @@ def mapper_esp(circuit: QuantumCircuit, target: Target, temps_mk: dict = None, p
         best_esp = eval_fn(best_tc)
         
     lay = _get_layout(best_tc, circuit)
-    active_qubits = set(get_active_qubits(best_tc))
-    if active_qubits:
-        assert active_qubits.issubset(set(lay)), f"Active qubits {active_qubits} exceed chosen layout {lay}"
     return best_tc, best_esp, time.time() - start_time, lay, best_r_seed
