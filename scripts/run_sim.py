@@ -207,13 +207,13 @@ def run_sim(resume=False, smoke=False):
                                 for draw_id, (tc, _, m_sec, lay, _) in enumerate(draws):
                                     # Simulate
                                     # Skip simulation if it's the identical circuit we already simulated for esp_no_thermal under THIS profile
-                                    if m_name == 'esp_thermal' and tc == methods[3][2][0][0]:
+                                    if m_name == 'esp_thermal' and lay == methods[3][2][0][3]:
                                         for s_seed in sim_seeds:
                                             key = f"{backend.name}_{N}_{b_name}_{bg_T}_{hot_frac}_{p_seed}_{m_name}_{draw_id}_{s_seed}"
                                             if key in done_keys: continue
                                             # Look up the metric_val we just wrote for esp_no_thermal
                                             ref_key = f"{backend.name}_{N}_{b_name}_{bg_T}_{hot_frac}_{p_seed}_esp_no_thermal_{draw_id}_{s_seed}"
-                                            val = cached_metrics.get(ref_key, 0.0)
+                                            val = cached_metrics[ref_key]
                                             row = f"{backend.name},{N},{b_name},{bg_T},{hot_frac},{hot_T},{stress},{p_seed},\"{hot_qs}\",{m_name},{o_lvl},{thermal_mode},{draw_id},{s_seed},{metric_type},{val},{esp_standard(tc, target)},{esp_thermal(tc, target, p1=temps_mk)},{esp_thermal_gate(tc, target, p1=temps_mk)},{m_sec},{count_native_2q(tc, target)},{tc.depth()},\"{lay}\"\n"
                                             with open(out_file, 'a') as f: f.write(row)
                                             done_keys.add(key)
@@ -225,7 +225,7 @@ def run_sim(resume=False, smoke=False):
                                     compact_qc, compact_nm = compact_circuit(tc, target, temps_mk, active_qs)
                                     sim = AerSimulator(noise_model=compact_nm)
                                     
-                                    if (b_name, N) not in ideal_probs_cache:
+                                    if b_name not in ideal_probs_cache:
                                         from qiskit.quantum_info import Statevector
                                         qc_no_meas = qc.remove_final_measurements(inplace=False)
                                         meas_qargs = [None] * qc.num_clbits
@@ -235,9 +235,9 @@ def run_sim(resume=False, smoke=False):
                                                     meas_qargs[qc.find_bit(c).index] = qc.find_bit(q).index
                                         sv = Statevector(qc_no_meas)
                                         probs = sv.probabilities_dict(qargs=meas_qargs)
-                                        ideal_probs_cache[(b_name, N)] = {k: v for k, v in probs.items() if v > 1e-10}
+                                        ideal_probs_cache[b_name] = {k: v for k, v in probs.items() if v > 1e-10}
                                     
-                                    ideal_probs = ideal_probs_cache[(b_name, N)]
+                                    ideal_probs = ideal_probs_cache[b_name]
                                     
                                     for s_seed in sim_seeds:
                                         key = f"{backend.name}_{N}_{b_name}_{bg_T}_{hot_frac}_{p_seed}_{m_name}_{draw_id}_{s_seed}"
@@ -262,12 +262,12 @@ def run_sim(resume=False, smoke=False):
                                         done_keys.add(key)
                                         
                 print(f"  Completed cell in {time.time() - cell_t0:.1f}s")
+                if smoke: return
                                         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--smoke', action='store_true', help='Run only one cell for a smoke test')
-    parser.add_argument('--step7', action='store_true', help='Step 7 execution')
     args = parser.parse_args()
     
     if args.smoke:
@@ -275,26 +275,3 @@ if __name__ == '__main__':
         run_sim(resume=args.resume, smoke=args.smoke)
     else:
         run_sim(resume=args.resume, smoke=args.smoke)
-        
-    # Aggregate results for Step 7
-    import pandas as pd
-    out_file = 'results/sim/phase_3_sweep.csv'
-    if os.path.exists(out_file):
-        df = pd.read_csv(out_file)
-        print("\n--- Step 7 Aggregation ---")
-        for metric_type in ['success_prob', 'hellinger_fidelity']:
-            metric_df = df[df['metric_type'] == metric_type]
-            if metric_df.empty: continue
-            print(f"\nMetric: {metric_type}")
-            for b_name in metric_df['benchmark'].unique():
-                for n_val in sorted(metric_df['N'].unique()):
-                    print(f"\nN={n_val}, Benchmark={b_name}")
-                    sub = metric_df[(metric_df['benchmark'] == b_name) & (metric_df['N'] == n_val)]
-                    if sub.empty: continue
-                    aggs = sub.groupby('method').agg(
-                        mean_val=('metric_val', 'mean'),
-                        n_rows=('metric_val', 'size'),
-                        seeds=('sim_seed', 'nunique')
-                    ).sort_values('mean_val', ascending=False)
-                    for m, row in aggs.iterrows():
-                        print(f"  {m:15s} | {row['mean_val']:.4f} (n={int(row['n_rows'])}, seeds={int(row['seeds'])})")
