@@ -1,108 +1,134 @@
 import os
 import sys
+import json
 import time
-import pandas as pd
+import math
+import argparse
 from pathlib import Path
-from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2 as Sampler
+from qiskit_ibm_runtime import SamplerV2 as Sampler
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
 sys.path.append(str(Path(__file__).parent.parent))
 from src.noise_model.profile import load_config
 from src.benchmarks.circuits import get_all_benchmarks
 from src.mappers.mappers import mapper_random, mapper_qiskit_default, mapper_esp
+from src.runner_ibm import get_ibm_service, get_backend, get_calibration_timestamp, check_pilot_and_approval, extract_qpu_seconds
 
-def run_hardware(dry_run=True):
+def validate_isa(circuit, target):
+    for inst in circuit.data:
+        op = inst.operation
+        qargs = tuple(circuit.find_bit(q).index for q in inst.qubits)
+        if not target.instruction_supported(op.name, qargs):
+             raise ValueError(f"Instruction {op.name} on {qargs} not supported by target.")
+
+def run_hardware(args):
     config = load_config()
-    budget = config['experiment']['budget_cap_qpu_seconds']
-    backend_name = config['backends']['real_5q']
     shots = config['experiment']['shots']
-
-    print(f"Connecting to IBM Quantum Runtime (backend: {backend_name})...")
-    token = os.getenv("QISKIT_IBM_TOKEN")
-    if token:
-        service = QiskitRuntimeService(channel="ibm_quantum", token=token)
+    
+    if args.local:
+        from qiskit.providers.fake_provider import GenericBackendV2
+        backend = GenericBackendV2(num_qubits=127)
+        backend_name = backend.name
+        timestamp = "local_fake_timestamp"
     else:
-        try:
-            service = QiskitRuntimeService(channel="ibm_quantum")
-        except Exception as e:
-            print(f"CRITICAL ERROR: No IBM credentials found. Configure QISKIT_IBM_TOKEN or save an account.")
-            sys.exit(1)
+        service = get_ibm_service()
+        backend = get_backend(service, config)
+        backend_name = backend.name
+        timestamp = get_calibration_timestamp(backend)
 
-    backend = service.backend(backend_name)
     target = backend.target
-
     benchmarks = get_all_benchmarks(min(5, target.num_qubits))
-
+    
     jobs_to_run = []
     
     for b_name, b_circ in benchmarks.items():
-        print(f"Mapping {b_name}...")
-        tc_rand = mapper_random(b_circ, target, num_draws=1, seed=42)[0]
+        tc_rand, _, _, lay_rand, _ = mapper_random(b_circ, target, num_draws=1, seed=42)[0]
         tc_l1 = mapper_qiskit_default(b_circ, target, level=1)
-        tc_l3 = mapper_qiskit_default(b_circ, target, level=3)
-        tc_esp, _ = mapper_esp(b_circ, target, temps_mk=None, use_thermal=False, exhaustive=False)
-
+        tc_esp, _, _, lay_esp, _ = mapper_esp(b_circ, target, temps_mk=None, use_thermal=False, exhaustive=False)
+        
         pm = generate_preset_pass_manager(target=target, optimization_level=0)
+        isa_rand = pm.run(tc_rand)
+        isa_l1 = pm.run(tc_l1)
+        isa_esp = pm.run(tc_esp)
+        
+        validate_isa(isa_rand, target)
+        validate_isa(isa_l1, target)
+        validate_isa(isa_esp, target)
+        
         jobs_to_run.extend([
-            (b_name, 'random', pm.run(tc_rand)),
-            (b_name, 'qiskit_L1', pm.run(tc_l1)),
-            (b_name, 'qiskit_L3', pm.run(tc_l3)),
-            (b_name, 'esp', pm.run(tc_esp))
+            (b_name, 'random', isa_rand),
+            (b_name, 'qiskit_L1', isa_l1),
+            (b_name, 'esp', isa_esp)
         ])
-
-    estimated_seconds_per_circuit = 3 # Approx 3s for 8k shots on small depth
-    total_estimate = len(jobs_to_run) * estimated_seconds_per_circuit
-    
-    print(f"\n--- QPU Budget Estimate ---")
-    print(f"Total circuits: {len(jobs_to_run)}")
-    print(f"Estimated QPU seconds: {total_estimate}")
-    print(f"Budget Cap: {budget} seconds")
-
-    if total_estimate > budget:
-        print("ERROR: Estimated time exceeds QPU budget! Aborting.")
-        sys.exit(1)
-
-    if dry_run:
-        print("Dry run complete. No jobs submitted. Run with 'python scripts/run_hardware.py execute' to submit.")
-        return
-
-    print("\nSubmitting jobs...")
-    sampler = Sampler(mode=backend)
-    
-    results = []
-    total_qpu_used = 0.0
-    
-    for b_name, m_name, circ in jobs_to_run:
-        print(f"Submitting {b_name} - {m_name}")
-        t_submit = time.time()
-        # Ensure twirling / dynamical decoupling are off for clean comparison
-        # (SamplerV2 defaults are fine, but can be explicitly set in options)
+        
+    if args.pilot:
+        b_name, m_name, circ = jobs_to_run[0]
+        print(f"Running PILOT: 1 circuit ({b_name} - {m_name}) with {shots} shots...")
+        
+        sampler = Sampler(mode=backend)
+        sampler.options.dynamical_decoupling.enable = False
+        sampler.options.twirling.enable_gates = False
+        
         job = sampler.run([circ], shots=shots)
+        print(f"Job ID: {job.job_id()}")
+        job.result()
+        usage = extract_qpu_seconds(job, 3.0)
         
-        # We wait for it here to get precise queue/exec times in order. (Could be async but simpler this way)
-        res = job.result()
-        t_done = time.time()
+        scale_data = {
+            "timestamp": time.time(),
+            "qpu_seconds_per_shot": usage / shots,
+            "pilot_usage": usage,
+            "pilot_shots": shots
+        }
+        os.makedirs("results/hardware", exist_ok=True)
+        with open("results/hardware/qpu_scale.json", "w") as f:
+            json.dump(scale_data, f, indent=2)
+        print(f"Pilot scale saved. Estimated seconds per shot: {scale_data['qpu_seconds_per_shot']}")
+        return
         
-        usage = job.usage()
-        qpu_time = usage.quantum_seconds if hasattr(usage, 'quantum_seconds') else 0.0
-        total_qpu_used += qpu_time
+    scale_file = "results/hardware/qpu_scale.json"
+    est_per_shot = 3.0 / 8192
+    if os.path.exists(scale_file):
+        with open(scale_file, "r") as f:
+            est_per_shot = json.load(f).get("qpu_seconds_per_shot", est_per_shot)
+            
+    total_est = len(jobs_to_run) * shots * est_per_shot
+    print(f"Total Circuits: {len(jobs_to_run)}")
+    print(f"Estimated QPU Seconds: {total_est}")
+    
+    if args.execute:
+        if not args.local:
+            check_pilot_and_approval(total_est, args.approve_seconds)
+            
+        print("Executing jobs...")
+        sampler = Sampler(mode=backend)
+        sampler.options.dynamical_decoupling.enable = False
+        sampler.options.twirling.enable_gates = False
         
-        results.append({
-            'benchmark': b_name,
-            'method': m_name,
-            'job_id': job.job_id(),
-            'qpu_time': qpu_time,
-            'wall_time': t_done - t_submit,
-            'cx_count': circ.count_ops().get('cx', 0),
-            'depth': circ.depth()
-        })
+        results = []
+        for b_name, m_name, circ in jobs_to_run:
+            job = sampler.run([circ], shots=shots)
+            res = job.result()
+            usage = extract_qpu_seconds(job, shots * est_per_shot) if not args.local else 0.0
+            
+            results.append({
+                "benchmark": b_name,
+                "method": m_name,
+                "job_id": job.job_id() if not args.local else "",
+                "qpu_time": usage
+            })
+            
+        with open("results/hardware/runtime_table.json", "w") as f:
+            json.dump(results, f, indent=2)
+        print("Execution complete.")
+    else:
+        print("[DRY RUN] Use --execute --approve-seconds N to submit.")
         
-    df = pd.DataFrame(results)
-    os.makedirs('results/hardware', exist_ok=True)
-    df.to_csv('results/hardware/runtime_table.csv', index=False)
-    print(f"Hardware run complete. Cumulative QPU seconds used: {total_qpu_used}")
-    print("Results saved to results/hardware/runtime_table.csv")
-
 if __name__ == "__main__":
-    dry_run = len(sys.argv) < 2 or sys.argv[1] != 'execute'
-    run_hardware(dry_run=dry_run)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--local', action='store_true')
+    parser.add_argument('--pilot', action='store_true')
+    parser.add_argument('--execute', action='store_true')
+    parser.add_argument('--approve-seconds', type=int)
+    args = parser.parse_args()
+    run_hardware(args)
