@@ -23,31 +23,30 @@ def run_audit():
     # 2. pytest collects >= 13 tests
     print("Checking pytest collection...")
     res = subprocess.run(['python', '-m', 'pytest', '--collect-only', '-q'], capture_output=True, text=True)
-    if res.returncode != 0 and res.returncode != 5: # 5 means no tests collected, which is bad anyway
+    if res.returncode != 0 and res.returncode != 5:
         errors.append("Pytest failed to run.")
     else:
         out = res.stdout
-        # output usually has "13 tests collected in 0.01s" or similar
         import re
         m = re.search(r'(\d+)\s+test[s]?\s+collected', out)
         if not m:
-             # try another format or last line
              lines = out.splitlines()
              collected = sum(1 for line in lines if "::" in line)
-             if collected < 13:
-                 errors.append(f"Pytest collected {collected} tests, expected >= 13.")
         else:
              collected = int(m.group(1))
-             if collected < 13:
-                 errors.append(f"Pytest collected {collected} tests, expected >= 13.")
+        print(f"  -> Pytest collected {collected} tests")
+        if collected < 13:
+             errors.append(f"Pytest collected {collected} tests, expected >= 13.")
                  
     # 3. run_hardware.py --help lists --pilot and --approve-seconds
     print("Checking run_hardware.py args...")
     res = subprocess.run(['python', 'scripts/run_hardware.py', '--help'], capture_output=True, text=True)
-    if '--pilot' not in res.stdout:
-         errors.append("run_hardware.py --help missing --pilot")
-    if '--approve-seconds' not in res.stdout:
-         errors.append("run_hardware.py --help missing --approve-seconds")
+    flags_found = []
+    if '--pilot' in res.stdout: flags_found.append('--pilot')
+    else: errors.append("run_hardware.py --help missing --pilot")
+    if '--approve-seconds' in res.stdout: flags_found.append('--approve-seconds')
+    else: errors.append("run_hardware.py --help missing --approve-seconds")
+    print(f"  -> Flags found: {', '.join(flags_found)}")
          
     # 4. config values
     print("Checking config values...")
@@ -55,10 +54,15 @@ def run_audit():
         with open('config.yaml', 'r') as f:
             config = yaml.safe_load(f)
             exp = config.get('experiment', {})
-            if exp.get('budget_cap_qpu_seconds') != 350:
-                errors.append("config budget_cap_qpu_seconds != 350")
-            if exp.get('reserve_qpu_seconds') != 250:
-                errors.append("config reserve_qpu_seconds != 250")
+            cap = exp.get('budget_cap_qpu_seconds')
+            res_val = exp.get('reserve_qpu_seconds')
+            print(f"  -> budget_cap_qpu_seconds: {cap}")
+            print(f"  -> reserve_qpu_seconds: {res_val}")
+            
+            if cap != 350:
+                errors.append(f"config budget_cap_qpu_seconds is {cap} != 350")
+            if res_val != 250:
+                errors.append(f"config reserve_qpu_seconds is {res_val} != 250")
             if 'thermal_term_mode' not in exp:
                 errors.append("config missing thermal_term_mode")
             if 'backend_selection' not in config.get('backends', {}):
@@ -73,8 +77,10 @@ def run_audit():
     # 5. README >= 2000 bytes
     print("Checking README size...")
     if os.path.exists('README.md'):
-        if os.path.getsize('README.md') < 2000:
-            errors.append("README.md is < 2000 bytes")
+        size = os.path.getsize('README.md')
+        print(f"  -> README.md size: {size} bytes")
+        if size < 2000:
+            errors.append(f"README.md is {size} < 2000 bytes")
     else:
         errors.append("README.md not found")
         
