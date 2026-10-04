@@ -285,7 +285,7 @@ if __name__ == '__main__':
         for b_name in df['benchmark'].unique():
             print(f"\nBenchmark: {b_name}")
             sub = df[df['benchmark'] == b_name]
-            metric = sub['metric'].iloc[0]
+            metric = sub['metric_type'].iloc[0]
             print(f"Metric: {metric}")
             means = sub.groupby('method')['metric_val'].mean().sort_values(ascending=False)
             for m, val in means.items():
