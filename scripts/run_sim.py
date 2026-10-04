@@ -76,7 +76,7 @@ def compact_circuit(tc, target, temps_mk, active_qubits):
     compact_nm = build_thermal_noise_model(compact_target, temps_mk=compact_temps)
     return compact_qc, compact_nm
 
-def run_sim(resume=False):
+def run_sim(resume=False, smoke=False):
     config = load_config()
     thermal_mode = config.get('experiment', {}).get('thermal_term_mode', 'raw_upper_bound')
     max_candidate_layouts = 200
@@ -85,13 +85,22 @@ def run_sim(resume=False):
     print("Temperatures in this sweep are synthetic and appear in both the objective and the noise model.")
     print("A simulated thermal win is by construction.\n")
     
-    backends = [FakeVigoV2(), FakeGuadalupeV2()]
+    backends = [FakeVigoV2()]
     Ns = [3, 4, 5]
     benchmarks_list = ['ghz', 'bv', 'qft', 'qaoa', 'routing']
     bg_temps = [15, 50, 80, 120]
     hot_fractions = [0, 0.2, 0.4]
     profile_seeds = [0, 1, 2]
     sim_seeds = list(range(20))
+    
+    if smoke:
+        bg_temps = [15]
+        hot_fractions = [0.2]
+        profile_seeds = [0]
+        sim_seeds = [0, 1]
+        max_candidate_layouts = 5
+        print("Reduced arrays for smoke test.")
+        
     config_shots = config.get('experiment', {}).get('shots', 8192)
     ideal_probs_cache = {}
     
@@ -113,16 +122,39 @@ def run_sim(resume=False):
     print("Estimating runtime from 20 transpiles...")
     t0 = time.time()
     dummy_qc = get_all_benchmarks(5)['qft']
-    for _ in range(20): transpile(dummy_qc, FakeGuadalupeV2(), optimization_level=1)
+    for _ in range(20): transpile(dummy_qc, FakeVigoV2(), optimization_level=1)
     transpile_time = (time.time() - t0) / 20.0
     print(f"Avg transpile time: {transpile_time:.4f}s")
     
     total_cells = len(backends) * len(Ns) * len(benchmarks_list)
-    est_total = total_cells * (max_candidate_layouts * 3) * transpile_time
-    print(f"Estimated mapping time: {est_total/60:.1f} minutes")
-    if est_total > 25 * 60:
-        max_candidate_layouts = int((25 * 60) / (total_cells * 3 * transpile_time))
-        print(f"WARNING: Estimate > 25 mins. Reducing max_candidate_layouts to {max_candidate_layouts}")
+    est_mapping = total_cells * (max_candidate_layouts * 3) * transpile_time
+    print(f"Estimated mapping time: {est_mapping/60:.1f} minutes")
+    
+    # Estimate simulation time
+    dummy_sim = AerSimulator()
+    tc_dummy = transpile(dummy_qc, FakeVigoV2(), optimization_level=1)
+    
+    t0_sim = time.time()
+    for _ in range(20): dummy_sim.run(tc_dummy, shots=config_shots).result()
+    sim_time = (time.time() - t0_sim) / 20.0
+    
+    # Per cell: profiles * (random + 5 fixed + 1 thermal)
+    num_rand_draws = max_candidate_layouts if smoke else 50
+    sims_per_cell = len(bg_temps) * len(hot_fractions) * len(profile_seeds) * (num_rand_draws + 6) * len(sim_seeds)
+    est_sim = total_cells * sims_per_cell * sim_time
+    print(f"Avg sim time (shots={config_shots}): {sim_time:.4f}s")
+    print(f"Estimated simulation time: {est_sim/60:.1f} minutes")
+    
+    est_total = est_mapping + est_sim
+    print(f"Total Estimated Time: {est_total/60:.1f} minutes")
+    
+    if est_total > 20 * 60:
+        if smoke:
+            max_candidate_layouts = int((20 * 60 * 0.1) / (total_cells * 3 * transpile_time))
+            print(f"WARNING: Estimate > 20 mins. Reducing max_candidate_layouts for smoke run.")
+        else:
+            print("ERROR: Total estimated time exceeds 20 minutes! Aborting to wait for user approval or parameter reduction.")
+            sys.exit(1)
         
     for backend in backends:
         target = backend.target
@@ -137,7 +169,8 @@ def run_sim(resume=False):
                 print(f"\nProcessing {backend.name} N={N} {b_name}...")
                 
                 # 1. Map once per cell
-                c_rand_list = mapper_random(qc, target, num_draws=50, opt_level=3)
+                num_rand_draws = max_candidate_layouts if smoke else 50
+                c_rand_list = mapper_random(qc, target, num_draws=num_rand_draws, opt_level=3)
                 c_l0 = mapper_qiskit_default(qc, target, level=0)
                 c_l1 = mapper_qiskit_default(qc, target, level=1)
                 c_l3 = mapper_qiskit_default(qc, target, level=3)
@@ -229,9 +262,16 @@ def run_sim(resume=False):
                                         done_keys.add(key)
                                         
                 print(f"  Completed cell in {time.time() - cell_t0:.1f}s")
+                if smoke: return
                                         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--resume', action='store_true')
+    parser.add_argument('--smoke', action='store_true', help='Run only one cell for a smoke test')
     args = parser.parse_args()
-    run_sim(resume=args.resume)
+    
+    if args.smoke:
+        print("Smoke run: reducing parameters to test execution flow...")
+        run_sim(resume=args.resume, smoke=args.smoke)
+    else:
+        run_sim(resume=args.resume, smoke=args.smoke)
