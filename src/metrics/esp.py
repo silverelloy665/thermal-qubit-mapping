@@ -114,20 +114,38 @@ def compute_esp_base(circuit: QuantumCircuit, target: Target, p1: dict = None, t
 def esp_standard(circuit: QuantumCircuit, target: Target) -> float:
     return compute_esp_base(circuit, target, thermal_term_mode='none')
 
-def esp_thermal(circuit: QuantumCircuit, target: Target, p1: dict = None, mode: str = None) -> float:
+def esp_thermal(circuit: QuantumCircuit, target: Target, p1: dict = None, temps_mk: dict = None, mode: str = None) -> float:
+    """
+    Computes Estimated Success Probability (ESP) including thermal relaxation penalties.
+    
+    Formulas:
+    - raw_upper_bound: ESP_std * Product_q (1 - p1_q)^2
+    - excess_over_readout: ESP_std * Product_q (1 - max(0, p1_q - readout_error_q))^2
+    
+    where p1_q = 1 / (1 + exp(h*f_q / (k_B * T_q)))
+    """
     if not mode:
         config = load_config()
         mode = config.get('experiment', {}).get('thermal_term_mode', 'raw_upper_bound')
-    # Backward compatibility with temps_mk if passed instead of p1 dict (for older scripts)
-    temps_mk = p1 if isinstance(p1, dict) and any(v > 1.0 for v in p1.values()) else None
-    p1_dict = None if temps_mk else p1
-    return compute_esp_base(circuit, target, p1=p1_dict, temps_mk=temps_mk, thermal_term_mode=mode)
+    # Backward compatibility with temps_mk if passed as p1 (from older scripts)
+    if isinstance(p1, dict) and any(v > 1.0 for v in p1.values()) and temps_mk is None:
+        temps_mk = p1
+        p1 = None
+    return compute_esp_base(circuit, target, p1=p1, temps_mk=temps_mk, thermal_term_mode=mode)
 
-def esp_thermal_gate(circuit: QuantumCircuit, target: Target, p1: dict = None) -> float:
+def esp_thermal_gate(circuit: QuantumCircuit, target: Target, p1: dict = None, temps_mk: dict = None) -> float:
+    """
+    Computes Estimated Success Probability (ESP) including thermal relaxation penalties,
+    integrated per-gate based on gate duration.
+    
+    Formula:
+    ESP_std * Product_{gates} [ 1 - p1_q * (1 - exp(-duration / T1)) ]
+    """
     esp = esp_standard(circuit, target)
     if not target: return esp
-    temps_mk = p1 if isinstance(p1, dict) and any(v > 1.0 for v in p1.values()) else None
-    p1_dict = None if temps_mk else p1
+    if isinstance(p1, dict) and any(v > 1.0 for v in p1.values()) and temps_mk is None:
+        temps_mk = p1
+        p1 = None
     
     thermal_prob = 1.0
     for inst in circuit.data:
@@ -138,7 +156,7 @@ def esp_thermal_gate(circuit: QuantumCircuit, target: Target, p1: dict = None) -
             props = target[op.name].get(qargs, None)
             if props and getattr(props, 'duration', 0.0) > 0:
                 for q in qargs:
-                    p1_val = get_p1(q, target, p1_dict, temps_mk)
+                    p1_val = get_p1(q, target, p1, temps_mk)
                     if p1_val > 0:
                         t1 = getattr(target.qubit_properties[q], 't1', 1e-3)
                         if not t1 or t1 <= 0: t1 = 1e-3
