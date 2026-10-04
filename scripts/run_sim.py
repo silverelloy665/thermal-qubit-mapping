@@ -106,7 +106,7 @@ def print_t3(b_name, methods, tc_list, backend, target):
         from qiskit.transpiler.passes import ALAPScheduleAnalysis
         from qiskit.transpiler import PassManager
         from qiskit.transpiler.instruction_durations import InstructionDurations
-        durations = InstructionDurations.from_target(target)
+        durations = InstructionDurations.from_backend(backend)
         try:
             pm = PassManager([ALAPScheduleAnalysis(durations)])
             tc_sched = pm.run(tc)
