@@ -28,9 +28,9 @@ def run_measure_p1(args):
     shots = 4096
     
     if args.local:
-        from qiskit.providers.fake_provider import GenericBackendV2
-        backend = GenericBackendV2(num_qubits=127)
-        timestamp = "local_fake_timestamp"
+        from qiskit_ibm_runtime.fake_provider import FakeVigoV2
+        backend = FakeVigoV2()
+        timestamp = get_calibration_timestamp(backend)
     else:
         service = get_ibm_service()
         backend = get_backend(service, config)
@@ -65,7 +65,7 @@ def run_measure_p1(args):
     scale = get_scale_estimate()
     est_qpu = scale * shots * 2  # scale is per shot
     
-    if args.execute:
+    if args.execute or args.local:
         if not args.local:
             check_pilot_and_approval(est_qpu, args.approve_seconds)
             
@@ -75,7 +75,7 @@ def run_measure_p1(args):
         sampler.options.twirling.enable_gates = False
         
         job = sampler.run([isa0, isa1], shots=shots)
-        print(f"Job ID: {job.job_id()}")
+        print(f"Job ID: {job.job_id() if not args.local else ''}")
         result = job.result()
         qpu_time = extract_qpu_seconds(job, est_qpu) if not args.local else 0.0
         print(f"QPU time used: {qpu_time}")
@@ -116,7 +116,8 @@ def run_measure_p1(args):
         }
         
         os.makedirs("results/hardware", exist_ok=True)
-        out_file = f"results/hardware/p1_{backend.name}_{timestamp}.json"
+        safe_ts = timestamp.replace(":", "").replace("-", "").replace("+", "_").replace(".", "_")
+        out_file = f"results/hardware/p1_{backend.name}_{safe_ts}.json"
         with open(out_file, "w") as f:
             json.dump(data, f, indent=2)
         print(f"Saved to {out_file}")

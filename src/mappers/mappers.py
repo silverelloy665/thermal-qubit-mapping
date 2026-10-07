@@ -12,7 +12,7 @@ from src.metrics.esp import esp_standard, esp_thermal, get_p1, load_config
 def get_active_qubits(qc):
     active = set()
     for inst in qc.data:
-        if inst.operation.name not in ['barrier', 'delay', 'measure']:
+        if inst.operation.name not in ['barrier', 'delay']:
             for q in inst.qubits:
                 active.add(qc.find_bit(q).index)
     return active

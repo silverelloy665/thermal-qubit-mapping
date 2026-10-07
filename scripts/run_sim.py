@@ -4,7 +4,9 @@ import os
 import random
 import math
 import numpy as np
+import sys
 from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 
 from qiskit import QuantumCircuit, transpile
 from qiskit_aer import AerSimulator
@@ -13,6 +15,8 @@ from qiskit.providers.fake_provider import GenericBackendV2
 from src.benchmarks.circuits import get_all_benchmarks
 from src.noise_model.thermal import build_thermal_noise_model
 from src.metrics.esp import esp_standard, esp_thermal, esp_thermal_gate, count_native_2q
+from src.metrics.outcome import compute_outcome_metric, compute_ideal_distribution
+from scripts.make_provenance_and_summary import write_provenance
 from src.mappers.mappers import (
     mapper_random, mapper_qiskit_default, mapper_esp, get_active_qubits, mapper_qiskit_best3
 )
@@ -45,15 +49,25 @@ class FakeVigoV2(GenericBackendV2):
         self.name = 'fake_vigo'
 
 def compact_circuit(tc, target, temps_mk, active_qubits):
-    mapping = {q: i for i, q in enumerate(sorted(active_qubits))}
+    all_active = set(active_qubits)
+    for inst in tc.data:
+        if inst.operation.name not in ['barrier', 'delay']:
+            for q in inst.qubits:
+                all_active.add(tc.find_bit(q).index)
+    mapping = {q: i for i, q in enumerate(sorted(all_active))}
     compact_qc = QuantumCircuit(len(mapping), len(tc.clbits))
     mapping_c = {c: compact_qc.clbits[i] for i, c in enumerate(tc.clbits)}
     for inst in tc.data:
+        if inst.operation.name in ['barrier', 'delay']:
+            new_qargs = [compact_qc.qubits[mapping[tc.find_bit(q).index]] for q in inst.qubits if tc.find_bit(q).index in mapping]
+            if new_qargs:
+                compact_qc.append(inst.operation, new_qargs, [])
+            continue
         new_qargs = [compact_qc.qubits[mapping[tc.find_bit(q).index]] for q in inst.qubits]
         new_cargs = [mapping_c[c] for c in inst.clbits]
         compact_qc.append(inst.operation, new_qargs, new_cargs)
     if temps_mk is None: temps_mk = {q: 15 for q in range(target.num_qubits)}
-    compact_temps = {mapping[q]: temps_mk[q] for q in active_qubits}
+    compact_temps = {mapping[q]: temps_mk[q] for q in all_active}
     
     from qiskit.transpiler import Target
     compact_target = Target(num_qubits=len(mapping))
@@ -135,20 +149,20 @@ def run_sweep():
         {
             'device': FakeVigoV2(),
             'Ns': [3, 4, 5],
-            'benchmarks': ['ghz', 'bv', 'qft', 'qaoa', 'routing', 'routing_old'],
+            'benchmarks': ['ghz', 'bv', 'qft', 'mirror'],
             'bg_temps': [15],
-            'hot_fractions': [0.0, 0.2],
+            'hot_fractions': [0.0],
             'profile_seeds': [0],
             'sim_seeds': list(range(20)),
-            'max_candidate_layouts': 100
+            'max_candidate_layouts': 50
         },
         {
             'device': FakeGuadalupeV2(),
             'Ns': [5],
-            'benchmarks': ['ghz', 'qft', 'routing'],
-            'bg_temps': [15, 50, 80, 120],
-            'hot_fractions': [0.2, 0.4],
-            'profile_seeds': [0, 1, 2],
+            'benchmarks': ['ghz', 'bv', 'qft', 'mirror'],
+            'bg_temps': [15],
+            'hot_fractions': [0.0],
+            'profile_seeds': [0],
             'sim_seeds': list(range(20)),
             'max_candidate_layouts': 50
         }
@@ -226,7 +240,7 @@ def run_sweep():
             for b_name in cfg['benchmarks']:
                 if b_name not in circuits: continue
                 qc = circuits[b_name]
-                metric_type = 'success_prob' if b_name in ['ghz', 'bv'] else 'fidelity'
+                metric_type = 'success_prob' if b_name in ['ghz', 'bv', 'mirror'] else 'fidelity'
                 
                 print(f"\nProcessing {backend.name} N={N} {b_name}...")
                 
@@ -265,9 +279,10 @@ def run_sweep():
                             stress = (hot_T > 80)
                             
                             temps_mk = {q: (hot_T if q in hot_qs else bg_T) for q in range(target.num_qubits)}
-                            thermal_mode = 'raw_upper_bound'
+                            thermal_mode = 'off' if (hot_frac == 0.0 and bg_T == 15) else 'raw_upper_bound'
+                            use_thermal = False if thermal_mode == 'off' else True
                             
-                            c_esp_th = mapper_esp(qc, target, temps_mk=temps_mk, use_thermal=True, max_candidate_layouts=cfg['max_candidate_layouts'], opt_level=3)
+                            c_esp_th = mapper_esp(qc, target, temps_mk=temps_mk, use_thermal=use_thermal, max_candidate_layouts=cfg['max_candidate_layouts'], opt_level=3)
                             
                             methods = methods_base + [('esp_thermal', 3, [c_esp_th])]
                             
@@ -291,11 +306,7 @@ def run_sweep():
                                     sim = AerSimulator(noise_model=compact_nm)
                                     
                                     if (b_name, N) not in ideal_probs_cache:
-                                        from qiskit.quantum_info import Statevector
-                                        qc_no_meas = qc.remove_final_measurements(inplace=False)
-                                        sv = Statevector(qc_no_meas)
-                                        probs = sv.probabilities_dict()
-                                        ideal_probs_cache[(b_name, N)] = {k: v for k, v in probs.items() if v > 1e-10}
+                                        ideal_probs_cache[(b_name, N)] = compute_ideal_distribution(qc)
                                         
                                     ideal_probs = ideal_probs_cache[(b_name, N)]
                                     
@@ -310,23 +321,15 @@ def run_sweep():
                                     
                                     for s_seed, counts in zip(missing_seeds, counts_list):
                                         key = f"{backend.name}_{N}_{b_name}_{bg_T}_{hot_frac}_{p_seed}_{m_name}_{draw_id}_{s_seed}"
-                                        val = 0.0
-                                        if metric_type == 'success_prob':
-                                            target_str = "1" * qc.num_clbits
-                                            if b_name == 'bv': target_str = "1" + "0"*(N-3) + "1" if N >= 3 else "1"
-                                            val = counts.get(target_str, 0) / 8192.0
-                                        else:
-                                            from qiskit.quantum_info import hellinger_fidelity
-                                            norm_c = {k: v/8192.0 for k, v in counts.items()}
-                                            val = hellinger_fidelity(ideal_probs, norm_c)
+                                        m_type, val = compute_outcome_metric(b_name, counts, qc, ideal_probs, shots=8192)
                                             
                                         if m_name == 'esp_no_thermal':
                                             cached_metrics[key] = val
                                             
                                         if backend.name == 'fake_vigo' and N == 4 and b_name == 'qft' and m_name in t3_acc:
-                                            t3_acc[m_name].append(val)
+                                             t3_acc[m_name].append(val)
                                             
-                                        row = f"{backend.name},{N},{b_name},{bg_T},{hot_frac},{hot_T},{stress},{p_seed},\"{hot_qs}\",{m_name},{o_lvl},{thermal_mode},{draw_id},{s_seed},{metric_type},{val},{esp_standard(tc, target)},{esp_thermal(tc, target, p1=temps_mk)},{esp_thermal_gate(tc, target, p1=temps_mk)},{m_sec},{count_native_2q(tc, target)},{tc.depth()},\"{lay}\"\n"
+                                        row = f"{backend.name},{N},{b_name},{bg_T},{hot_frac},{hot_T},{stress},{p_seed},\"{hot_qs}\",{m_name},{o_lvl},{thermal_mode},{draw_id},{s_seed},{m_type},{val},{esp_standard(tc, target)},{esp_thermal(tc, target, p1=temps_mk)},{esp_thermal_gate(tc, target, p1=temps_mk)},{m_sec},{count_native_2q(tc, target)},{tc.depth()},\"{lay}\"\n"
                                         with open(out_file, 'a') as f: f.write(row)
                                         done_keys.add(key)
                                         
@@ -337,6 +340,9 @@ def run_sweep():
                     for m in ['qiskit_L3', 'qiskit_L3_best3', 'esp_no_thermal', 'random']:
                         mean_f = np.mean(t3_acc[m]) if t3_acc[m] else 0.0
                         print(f"{m} mean fidelity: {mean_f:.4f}")
+
+    write_provenance(out_file)
+    print("Sweep complete and provenance sidecar written.")
 
 if __name__ == '__main__':
     run_sweep()

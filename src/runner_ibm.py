@@ -53,7 +53,7 @@ def check_pilot_and_approval(total_estimated_seconds, approve_seconds, scale_fil
         
 def get_scale_estimate(scale_file_path="results/hardware/qpu_scale.json"):
     if not os.path.exists(scale_file_path):
-        return 3.0 # fallback
+        return 3.0 / 8192 # fallback per-shot estimate
     with open(scale_file_path, "r") as f:
         scale_data = json.load(f)
     return scale_data.get("qpu_seconds_per_shot", 3.0 / 8192)

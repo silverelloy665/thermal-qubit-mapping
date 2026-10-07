@@ -1,0 +1,48 @@
+{
+  "csv_file": "phase_b_sweep.csv",
+  "csv_path": "C:\\Users\\Aarush\\Desktop\\Thermal_Qubit\\thermal-qubit-mapping\\results\\sim\\phase_b_sweep.csv",
+  "generated_at": "2026-10-08T01:36:27.050756",
+  "git": {
+    "commit": "8706ec5781d6",
+    "branch": "main",
+    "dirty": true
+  },
+  "package_versions": {
+    "qiskit": "2.3.1",
+    "qiskit_aer": "0.17.2",
+    "qiskit_ibm_runtime": "0.45.1",
+    "numpy": "2.4.3",
+    "scipy": "1.17.1",
+    "pandas": "3.0.1",
+    "python": "3.13.12 (tags/v3.13.12:1cbe481, Feb  3 2026, 18:22:25) [MSC v.1944 64 bit (AMD64)]"
+  },
+  "summary": {
+    "row_count": 16160,
+    "column_count": 23,
+    "columns": [
+      "device",
+      "N",
+      "benchmark",
+      "bg_T",
+      "hot_frac",
+      "hot_T",
+      "stress",
+      "profile_seed",
+      "hot_qs",
+      "method",
+      "opt_level",
+      "thermal_mode",
+      "draw_id",
+      "sim_seed",
+      "metric_type",
+      "metric_val",
+      "esp_standard",
+      "esp_thermal",
+      "esp_thermal_gate",
+      "mapping_seconds",
+      "native_2q",
+      "depth",
+      "layout"
+    ]
+  }
+}

@@ -5,5 +5,9 @@ __pycache__/
 *.pyc
 results/raw_private/
 .ipynb_checkpoints/
-results/sim/*raw*.csv
-results/sim/phase_3_sweep*.csv
+results/sim/invalid_pre_fix/
+results/sim/invalid_pre_fix2/
+results/hardware/stale_rehearsal/
+results/sim/*.csv
+!results/sim/*summary*.csv
+!results/sim/*results*.csv

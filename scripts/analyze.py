@@ -17,7 +17,7 @@ def bootstrap_paired(d1, d2, n_resamples=1000):
 
 def analyze():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--file', default='results/sim/phase_3_sweep.csv')
+    parser.add_argument('--file', default='results/sim/phase_b_sweep.csv')
     args = parser.parse_args()
     
     if not os.path.exists(args.file):

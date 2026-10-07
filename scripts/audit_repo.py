@@ -35,8 +35,8 @@ def run_audit():
         else:
              collected = int(m.group(1))
         print(f"  -> Pytest collected {collected} tests")
-        if collected < 13:
-             errors.append(f"Pytest collected {collected} tests, expected >= 13.")
+        if collected < 18:
+             errors.append(f"Pytest collected {collected} tests, expected >= 18.")
                  
     # 3. run_hardware.py --help lists --pilot and --approve-seconds
     print("Checking run_hardware.py args...")

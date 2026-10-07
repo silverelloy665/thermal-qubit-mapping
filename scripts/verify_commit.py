@@ -48,7 +48,7 @@ def main():
                     print(f"FAIL: {f} shrank by more than 30% (from {s1} to {s2})")
                     sys.exit(1)
                     
-    # e) fail if test count fell below 13
+    # e) fail if test count fell below 18
     rc, out, err = run_cmd("python -m pytest --collect-only -q")
     import re
     m = re.search(r'(\d+)\s+test[s]?\s+collected', out)
@@ -57,8 +57,8 @@ def main():
          collected = sum(1 for line in lines if "::" in line)
     else:
          collected = int(m.group(1))
-    if collected < 13:
-         print(f"FAIL: test count fell to {collected} (< 13)")
+    if collected < 18:
+         print(f"FAIL: test count fell to {collected} (< 18)")
          sys.exit(1)
          
     print("VERIFY PASSED")

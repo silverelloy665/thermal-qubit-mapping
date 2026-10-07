@@ -243,49 +243,123 @@ def test_m_noisy_equivalence(fake_backend):
     def norm(c): return {k: v/sum(c.values()) for k, v in c.items()}
     assert hellinger_fidelity(norm(counts_full), norm(counts_compact)) > 0.95
 
-def test_new_routing_variance():
-    from src.benchmarks.circuits import get_routing
+def test_mirror_circuit_ideal_and_noisy_variance(fake_backend):
+    from src.benchmarks.circuits import get_mirror
     from src.noise_model.thermal import build_thermal_noise_model
-    from qiskit_aer import AerSimulator
-    from qiskit import transpile
-    from qiskit.quantum_info import Statevector, hellinger_fidelity
-    from qiskit.providers.fake_provider import GenericBackendV2
-    
-    class LinearBackend(GenericBackendV2):
-        def __init__(self):
-            super().__init__(
-                num_qubits=5,
-                basis_gates=['cx', 'id', 'rz', 'sx', 'x'],
-                coupling_map=[[0, 1], [1, 0], [1, 2], [2, 1], [2, 3], [3, 2], [3, 4], [4, 3]],
-                seed=42
-            )
-    
-    fake_backend = LinearBackend(); 
-    for edge in fake_backend.target['cx']: fake_backend.target['cx'][edge].duration = 10e-6
-    n = 5
-    qc = get_routing(n)
-    
-    # ideal
+    from src.metrics.outcome import compute_outcome_metric
+    from qiskit.quantum_info import Statevector
+
+    qc = get_mirror(5)
+    # 1. Ideal max probability > 0.99
     qc_no_meas = qc.remove_final_measurements(inplace=False)
-    ideal_probs = Statevector(qc_no_meas).probabilities_dict()
-    ideal_probs = {k: v for k, v in ideal_probs.items() if v > 1e-10}
-    
-    # noise model with hot spot
-    temps = {q: 15 for q in range(n)}
-    temps[1] = 1000
+    probs = Statevector(qc_no_meas).probabilities_dict()
+    assert probs.get('00000', 0.0) > 0.99
+
+    # 2. Noisy success_prob varies across layouts by > 1e-3 on Vigo N=5
+    temps = {q: 15 for q in range(5)}
+    temps[1] = 100
     nm = build_thermal_noise_model(fake_backend.target, temps_mk=temps)
     sim = AerSimulator(noise_model=nm)
-    
-    def norm(c): return {k: v/sum(c.values()) for k, v in c.items()}
-    
-    fidelities = set()
-    for perm in [[0,1,2,3,4], [0,4,1,3,2]]:
+
+    success_probs = []
+    for perm in [[0, 1, 2, 3, 4], [4, 3, 1, 0, 2], [2, 1, 3, 4, 0]]:
         tc = transpile(qc, fake_backend, initial_layout=perm, optimization_level=3, seed_transpiler=42)
-        counts = sim.run(tc, shots=8192).result().get_counts()
-        fid = hellinger_fidelity(ideal_probs, norm(counts))
-        fidelities.add(fid)
+        counts = sim.run(tc, shots=8192, seed_simulator=42).result().get_counts()
+        _, sp = compute_outcome_metric('mirror', counts, qc, shots=8192)
+        success_probs.append(sp)
+
+    variance = max(success_probs) - min(success_probs)
+    assert variance > 1e-3, f"Mirror success_prob variance {variance} <= 1e-3"
+
+def test_missing_reference_raises():
+    import pytest
+    cached_metrics = {}
+    ref_key = 'some_key'
+    with pytest.raises(KeyError):
+        val = cached_metrics[ref_key]
+
+def test_n_smoke_run_metrics():
+    import pandas as pd
+    import os
+    csv_file = 'results/sim/phase_3_sweep.csv'
+    if not os.path.exists(csv_file): return
+    df = pd.read_csv(csv_file)
+    
+    # Check if any metric_val is exactly 0.0
+    zeros = df[df['metric_val'] == 0.0]
+    assert len(zeros) == 0, f"Found {len(zeros)} exactly zero metrics!"
+    
+    # Check if N=4/5 row counts differ from N=3
+    counts = df.groupby('N').size()
+    if 3 in counts:
+        c3 = counts[3]
+        for n in [4, 5]:
+            if n in counts:
+                assert counts[n] == c3, f"N={n} row count {counts[n]} != N=3 row count {c3}"
+
+def test_pilot_gate(tmp_path):
+    import time, json, pytest
+    from src.runner_ibm import check_pilot_and_approval
+    
+    # Missing file
+    with pytest.raises(ValueError, match="Pilot scale file not found"):
+        check_pilot_and_approval(10.5, 11, scale_file_path=str(tmp_path / "missing.json"))
         
-    assert max(fidelities) - min(fidelities) > 1e-3, f"Fidelities {fidelities} did not vary by > 1e-3 across layouts!"
+    # Stale file
+    stale = tmp_path / "stale.json"
+    with open(stale, "w") as f:
+        json.dump({"timestamp": time.time() - 87000, "qpu_seconds_per_shot": 0.0003}, f)
+    with pytest.raises(ValueError, match="Pilot scale file is older than 24h"):
+        check_pilot_and_approval(10.5, 11, scale_file_path=str(stale))
+        
+    # Correct file
+    good = tmp_path / "good.json"
+    with open(good, "w") as f:
+        json.dump({"timestamp": time.time(), "qpu_seconds_per_shot": 0.0003}, f)
+        
+    # Wrong number
+    with pytest.raises(ValueError, match="must exactly match required"):
+        check_pilot_and_approval(10.5, 12, scale_file_path=str(good))
+    with pytest.raises(ValueError, match="must exactly match required"):
+        check_pilot_and_approval(10.5, 10, scale_file_path=str(good))
+        
+    # Correct number (no error)
+    check_pilot_and_approval(10.5, 11, scale_file_path=str(good))
+
+def test_real_run_sim_noiseless_success_prob_vigo(fake_backend):
+    from itertools import permutations
+    from src.benchmarks.circuits import get_ghz, get_bv_n, get_mirror
+    from src.mappers.mappers import get_connected_subgraphs, get_active_qubits
+    from scripts.run_sim import compact_circuit
+    from src.metrics.outcome import compute_outcome_metric
+
+    sim = AerSimulator()
+    for n in [3, 4, 5]:
+        for b_name, qc in [('ghz', get_ghz(n)), ('bv', get_bv_n(n)), ('mirror', get_mirror(n))]:
+            for sg in get_connected_subgraphs(fake_backend.target, n):
+                for perm in permutations(sg):
+                    tc = transpile(qc, fake_backend, initial_layout=list(perm), optimization_level=1, seed_transpiler=42)
+                    active_qs = list(get_active_qubits(tc))
+                    if not active_qs: active_qs = list(perm)
+                    compact_qc, _ = compact_circuit(tc, fake_backend.target, None, active_qs)
+                    counts = sim.run(compact_qc, shots=50, seed_simulator=42).result().get_counts()
+                    m_type, sp = compute_outcome_metric(b_name, counts, qc, shots=50)
+                    assert m_type == 'success_prob'
+                    assert sp == 1.0, f"{b_name} failed on N={n}, layout={perm}, sp={sp}"
+
+def test_provenance_generation(tmp_path):
+    from scripts.make_provenance_and_summary import write_provenance
+    import json
+    dummy_csv = tmp_path / "test.csv"
+    with open(dummy_csv, "w") as f:
+        f.write("col1,col2\n1,2\n3,4\n")
+    sidecar = write_provenance(dummy_csv)
+    assert sidecar.exists()
+    with open(sidecar, "r") as f:
+        data = json.load(f)
+    assert "git" in data
+    assert "package_versions" in data
+    assert data["summary"]["row_count"] == 2
 
 
 

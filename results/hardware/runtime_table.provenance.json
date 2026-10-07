@@ -1,0 +1,40 @@
+{
+  "csv_file": "runtime_table.csv",
+  "csv_path": "C:\\Users\\Aarush\\Desktop\\Thermal_Qubit\\thermal-qubit-mapping\\results\\hardware\\runtime_table.csv",
+  "generated_at": "2026-10-08T01:36:24.436328",
+  "git": {
+    "commit": "8706ec5781d6",
+    "branch": "main",
+    "dirty": true
+  },
+  "package_versions": {
+    "qiskit": "2.3.1",
+    "qiskit_aer": "0.17.2",
+    "qiskit_ibm_runtime": "0.45.1",
+    "numpy": "2.4.3",
+    "scipy": "1.17.1",
+    "pandas": "3.0.1",
+    "python": "3.13.12 (tags/v3.13.12:1cbe481, Feb  3 2026, 18:22:25) [MSC v.1944 64 bit (AMD64)]"
+  },
+  "summary": {
+    "row_count": 40,
+    "column_count": 15,
+    "columns": [
+      "job_id",
+      "backend",
+      "calibration_timestamp",
+      "queue_seconds",
+      "run_seconds",
+      "shots",
+      "repetition",
+      "benchmark",
+      "method",
+      "metric_type",
+      "metric_val",
+      "cx_count",
+      "depth",
+      "layout",
+      "shared_circuit"
+    ]
+  }
+}
