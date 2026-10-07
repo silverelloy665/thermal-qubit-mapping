@@ -24,7 +24,7 @@ def validate_isa(circuit, target):
 
 def run_measure_p1(args):
     config = load_config()
-    region = config.get('experiment', {}).get('qubit_region', [0, 1, 2, 3])
+    raw_region = config.get('experiment', {}).get('qubit_region', 'all')
     shots = 4096
     
     if args.local:
@@ -38,8 +38,11 @@ def run_measure_p1(args):
         
     target = backend.target
     
-    # Check if region is within target
-    region = [q for q in region if q < target.num_qubits]
+    if raw_region == 'all' or (isinstance(raw_region, str) and raw_region.lower() == 'all'):
+        region = list(range(target.num_qubits))
+    else:
+        region = [q for q in raw_region if q < target.num_qubits]
+        
     if not region:
         print("No valid qubits in region.")
         return
@@ -97,7 +100,9 @@ def run_measure_p1(args):
             c0_1 = sum(v for k, v in counts0.items() if k[-(i+1)] == '1') / shots
             c1_0 = sum(v for k, v in counts1.items() if k[-(i+1)] == '0') / shots
             
-            p1_est[str(q)] = c1_0
+            # NOTE: Measured P(1|0) includes readout assignment error and is not a pure temperature measurement.
+            # readout_asymmetry is retained in the JSON for calibration and correction.
+            p1_est[str(q)] = c0_1
             r_asym[str(q)] = c1_0 - c0_1
             
             err = 0.0

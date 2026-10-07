@@ -8,8 +8,8 @@ experiment:
   random_layouts_count: 50
   budget_cap_qpu_seconds: 350
   reserve_qpu_seconds: 250
-  thermal_term_mode: raw_upper_bound
-  qubit_region: [0, 1, 2, 3, 4]
+  thermal_term_mode: excess_over_readout
+  qubit_region: all
 
 backends:
   fake_5q: "fake_vigo"

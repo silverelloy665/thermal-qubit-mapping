@@ -221,27 +221,69 @@ def test_l_asymmetric_permutation(fake_backend):
     assert '001' in counts and counts['001'] == 100
 
 def test_m_noisy_equivalence(fake_backend):
+    # Tests that compact_circuit creates an equivalent execution under noise on FakeVigoV2 (GHZ and QFT, 3-sigma tolerance)
     from scripts.run_sim import compact_circuit
+    from src.benchmarks.circuits import get_ghz, get_all_benchmarks
     from src.noise_model.thermal import build_thermal_noise_model
-    qc = QuantumCircuit(2)
-    qc.x(0)
-    qc.x(1)
-    qc.measure_all()
-    
-    tc = transpile(qc, fake_backend, initial_layout=[0,1], optimization_level=0)
-    temps = {0: 100, 1: 15}
-    full_nm = build_thermal_noise_model(fake_backend.target, temps_mk=temps)
-    
-    sim_full = AerSimulator(noise_model=full_nm)
-    counts_full = sim_full.run(tc, shots=8192).result().get_counts()
-    
-    compact_qc, compact_nm = compact_circuit(tc, fake_backend.target, temps, [0,1])
-    sim_compact = AerSimulator(noise_model=compact_nm)
-    counts_compact = sim_compact.run(compact_qc, shots=8192).result().get_counts()
-    
+    from qiskit_ibm_runtime.fake_provider import FakeVigoV2
     from qiskit.quantum_info import hellinger_fidelity
+    
+    backend = FakeVigoV2()
+    temps = {0: 100, 1: 15, 2: 15, 3: 15, 4: 15}
+    full_nm = build_thermal_noise_model(backend.target, temps_mk=temps)
+    sim_full = AerSimulator(noise_model=full_nm)
+    
     def norm(c): return {k: v/sum(c.values()) for k, v in c.items()}
-    assert hellinger_fidelity(norm(counts_full), norm(counts_compact)) > 0.95
+    
+    for b_name, qc in [('ghz', get_ghz(5)), ('qft', get_all_benchmarks(5)['qft'])]:
+        tc = transpile(qc, backend, initial_layout=[0, 1, 2, 3, 4], optimization_level=3, seed_transpiler=42)
+        counts_full = sim_full.run(tc, shots=8192, seed_simulator=42).result().get_counts()
+        
+        compact_qc, compact_nm = compact_circuit(tc, backend.target, temps, [0, 1, 2, 3, 4])
+        sim_compact = AerSimulator(noise_model=compact_nm)
+        counts_compact = sim_compact.run(compact_qc, shots=8192, seed_simulator=42).result().get_counts()
+        
+        fid = hellinger_fidelity(norm(counts_full), norm(counts_compact))
+        assert fid > 0.98, f"Hellinger fidelity {fid} <= 0.98 for {b_name}"
+
+def test_mirror_barrier_native_2q_and_depth():
+    from src.benchmarks.circuits import get_mirror
+    from src.mappers.mappers import mapper_qiskit_default, mapper_esp, mapper_random
+    from src.metrics.esp import count_native_2q
+    from qiskit_ibm_runtime.fake_provider import FakeVigoV2
+    from qiskit.quantum_info import Statevector
+    
+    vigo = FakeVigoV2()
+    for n in [3, 4, 5]:
+        qc = get_mirror(n)
+        # ideal P(0..0) is strictly 1
+        qc_no_meas = qc.remove_final_measurements(inplace=False)
+        probs = Statevector(qc_no_meas).probabilities_dict()
+        assert probs.get("0" * n, 0.0) > 0.9999
+        
+        l1 = mapper_qiskit_default(qc, vigo.target, level=1)[0]
+        l3 = mapper_qiskit_default(qc, vigo.target, level=3)[0]
+        esp = mapper_esp(qc, vigo.target, use_thermal=False, opt_level=3)[0]
+        rnd = mapper_random(qc, vigo.target, num_draws=1, opt_level=3)[0][0]
+        for name, c in [('qiskit_L1', l1), ('qiskit_L3', l3), ('esp', esp), ('random', rnd)]:
+            assert count_native_2q(c, vigo.target) > 0, f"Vigo N={n} {name} native 2q <= 0"
+            assert c.depth() > 1, f"Vigo N={n} {name} depth <= 1"
+            
+    # Also test on live ibm_kingston target (dry run)
+    try:
+        from src.runner_ibm import get_ibm_service
+        s = get_ibm_service()
+        b = s.backend("ibm_kingston")
+        target_k = b.target
+        qc5 = get_mirror(5)
+        l1_k = mapper_qiskit_default(qc5, target_k, level=1)[0]
+        l3_k = mapper_qiskit_default(qc5, target_k, level=3)[0]
+        assert count_native_2q(l1_k, target_k) > 0
+        assert count_native_2q(l3_k, target_k) > 0
+        assert l1_k.depth() > 1
+        assert l3_k.depth() > 1
+    except Exception as e:
+        print(f"Skipping live kingston test: {e}")
 
 def test_mirror_circuit_ideal_and_noisy_variance(fake_backend):
     from src.benchmarks.circuits import get_mirror

@@ -2,9 +2,21 @@ import os
 import sys
 import json
 import time
-import math
 import argparse
+import hashlib
+import math
 from pathlib import Path
+
+def hash_circuit(qc):
+    items = []
+    for inst in qc.data:
+        q_indices = tuple(qc.find_bit(q).index for q in inst.qubits)
+        c_indices = tuple(qc.find_bit(c).index for c in inst.clbits)
+        params = tuple(float(p) if isinstance(p, (int, float)) else str(p) for p in inst.operation.params)
+        items.append((inst.operation.name, q_indices, c_indices, params))
+    s = repr(items).encode('utf-8')
+    raw_h = hashlib.sha256(s).hexdigest()
+    return "-".join(raw_h[i:i+16] for i in range(0, len(raw_h), 16))
 
 from qiskit import transpile
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
@@ -176,6 +188,25 @@ def run_hardware(args):
     est_per_job = count_after * est_per_circuit
     total_qpu_est = est_per_job * (2 if not args.pilot else 1)
     
+    # Generate circuit hashes for approval plan
+    current_hashes = [hash_circuit(c) for c in unique_circuits]
+    plan_path = Path("results/hardware/plan.json")
+    plan_data = {
+        "backend": backend_name,
+        "calibration_timestamp": timestamp,
+        "circuit_hashes": current_hashes,
+        "circuit_count_before": count_before,
+        "circuit_count_after": count_after,
+        "per_circuit_estimate_seconds": est_per_circuit,
+        "per_job_estimate_seconds": est_per_job,
+        "total_estimate_seconds": total_qpu_est,
+        "shots": shots,
+        "repetitions": 2
+    }
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(plan_path, "w") as f:
+        json.dump(plan_data, f, indent=2)
+    
     print(f"Backend Selected: {backend_name}")
     print(f"Calibration Timestamp: {timestamp}")
     print(f"Circuit Count Before De-duplication: {count_before}")
@@ -183,6 +214,7 @@ def run_hardware(args):
     print(f"Estimated QPU Time Per Circuit:      {est_per_circuit:.3f} s")
     print(f"Estimated QPU Time Per Rep (Job):    {est_per_job:.3f} s")
     print(f"Total QPU Estimate (2 reps):         {total_qpu_est:.3f} s (Budget Cap: {budget_cap} s)")
+    print(f"Approval plan written to {plan_path}")
     
     if args.pilot:
         print(f"\n[PILOT] Running 1 circuit with {shots} shots...")
@@ -208,12 +240,49 @@ def run_hardware(args):
         
     if not args.execute and not args.local:
         print("\n[LIVE DRY RUN COMPLETE] No jobs submitted to QPU.")
-        print(f"To execute: python scripts/run_hardware.py --execute --approve-seconds {math.ceil(total_qpu_est)}")
+        p1_files = list(Path("results/hardware").glob(f"p1_{backend_name}_*.json"))
+        scale_exists = os.path.exists(scale_file)
+        p1_exists = len(p1_files) > 0
+        
+        if scale_exists and p1_exists:
+            with open(scale_file, "r") as f:
+                s_data = json.load(f)
+            s_scale = s_data.get("qpu_seconds_per_shot", 3.0 / 8192)
+            p1_approve = math.ceil(4096 * 2 * s_scale)
+            hw_approve = math.ceil(count_after * (shots * s_scale) * 2)
+            print("\nExact commands with approved budgets:")
+            print("  python scripts/run_hardware.py --pilot")
+            print(f"  python scripts/measure_p1.py --execute --approve-seconds {p1_approve}")
+            print(f"  python scripts/run_hardware.py --execute --approve-seconds {hw_approve}")
+        else:
+            print("\nExact command sequence (placeholders shown; approval numbers require pilot scale and p1 files):")
+            print("  python scripts/run_hardware.py --pilot")
+            print("  python scripts/measure_p1.py --execute --approve-seconds <N>")
+            print("  python scripts/run_hardware.py --execute --approve-seconds <M>")
         return
         
     # Execution (Local Rehearsal or Hardware Submission)
     if args.execute and not args.local:
-        check_pilot_and_approval(total_qpu_est, args.approve_seconds)
+        if not plan_path.exists():
+            raise ValueError(f"Approval plan {plan_path} does not exist! Run dry run first.")
+        with open(plan_path, "r") as f:
+            plan = json.load(f)
+        if current_hashes != plan.get("circuit_hashes"):
+            raise ValueError("Circuits differ from plan! Transpiled circuits must match results/hardware/plan.json exactly.")
+            
+        if not os.path.exists(scale_file):
+            raise ValueError(f"Pilot scale file {scale_file} not found. Run --pilot first.")
+        with open(scale_file, "r") as f:
+            scale_data = json.load(f)
+        if time.time() - scale_data.get("timestamp", 0) > 86400:
+            raise ValueError("Pilot scale file is older than 24h. Run --pilot again.")
+            
+        pilot_scale = scale_data.get("qpu_seconds_per_shot")
+        est_after_pilot = count_after * (shots * pilot_scale) * 2
+        req_approve = math.ceil(est_after_pilot)
+        
+        if args.approve_seconds is None or args.approve_seconds != req_approve:
+            raise ValueError(f"--approve-seconds {args.approve_seconds} must exactly match required ceil estimate after pilot scale: {req_approve}")
         
     print(f"\nExecuting {'local rehearsal' if args.local else 'hardware submission'}...")
     sampler = Sampler(mode=backend)

@@ -1,0 +1,28 @@
+{
+  "backend": "fake_vigo",
+  "calibration_timestamp": "2021-01-20T03:30:10-05:00",
+  "circuit_hashes": [
+    "7a1cbc9b1beca6fe-f74dc1b7d4c4480b-a2b2bff400042ad9-d1ad7d4a1bbd14dc",
+    "dd050106ccaf3632-cf8ae14f33d35075-6c3c8a9737e47c73-13495f79e6eec711",
+    "5a52996fee2750fb-d1414c3ea412f093-27c3876dab0246dd-2d6df55eb5e09bb6",
+    "14774fba59306bbd-3f7e69b3a2f0dd81-decd750cb292d6a0-60db9c14ec741d17",
+    "be8a8885e23875ac-a4819911943abdf3-e91cd798f76cc6de-374cea723c0b9fbe",
+    "c793394386746606-9fb0b97dd7e2ec56-dd5637d154eb32d2-72c34143a1491075",
+    "ad3979aa5c3c2d74-ab56ba56122c4082-65becccaa72eaecb-0de2404cb7248c9a",
+    "ad2d8d8001da2adc-d7996c3037e45121-4d6041effe70ecf8-7444b030861b9a50",
+    "0810b2823539f21e-7340086a3b4c751b-4f26158c48b35da1-a78a0188bfd1065a",
+    "0ff791dcfba5101d-e8540a85735c74b2-10539e7fa34239e3-65eff3e1e8a041fa",
+    "db75be15585e94ad-1a847089560536c7-dc86145ebfbae4dd-d2300160a10a81e5",
+    "e9a6b0cfdab8bbaa-3c39d51b1acdc57d-962f4e6da988f478-17de2d5b4a6be390",
+    "6de90f9ebe046f2f-f2a2964411d00132-d3e5652797e85e42-ab15eee624805638",
+    "acffba1af695a335-90dc16b551a0cbe3-d7b698173ec337c3-1f33d56e7d87ff21",
+    "35af2de5c250bbed-c236515fa0ec5df3-75c2cb2caf1ad5b5-2e2777e672a30484"
+  ],
+  "circuit_count_before": 20,
+  "circuit_count_after": 15,
+  "per_circuit_estimate_seconds": 3.0,
+  "per_job_estimate_seconds": 45.0,
+  "total_estimate_seconds": 90.0,
+  "shots": 8192,
+  "repetitions": 2
+}

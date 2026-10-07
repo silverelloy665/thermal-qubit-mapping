@@ -21,32 +21,7 @@ from src.mappers.mappers import (
     mapper_random, mapper_qiskit_default, mapper_esp, get_active_qubits, mapper_qiskit_best3
 )
 
-# Guadalupe fake
-class FakeGuadalupeV2(GenericBackendV2):
-    def __init__(self):
-        super().__init__(
-            num_qubits=16,
-            basis_gates=['cx', 'id', 'rz', 'sx', 'x'],
-            coupling_map=[
-                [0, 1], [1, 0], [1, 2], [2, 1], [2, 3], [3, 2], [3, 5], [5, 3],
-                [1, 4], [4, 1], [5, 8], [8, 5], [4, 7], [7, 4], [6, 7], [7, 6],
-                [8, 9], [9, 8], [8, 11], [11, 8], [7, 10], [10, 7], [10, 12], [12, 10],
-                [11, 14], [14, 11], [12, 13], [13, 12], [13, 14], [14, 13], [14, 15], [15, 14]
-            ],
-            seed=42
-        )
-        self.name = 'fake_guadalupe'
-
-# Vigo fake
-class FakeVigoV2(GenericBackendV2):
-    def __init__(self):
-        super().__init__(
-            num_qubits=5,
-            basis_gates=['cx', 'id', 'rz', 'sx', 'x'],
-            coupling_map=[[0, 1], [1, 0], [1, 2], [2, 1], [1, 3], [3, 1], [3, 4], [4, 3]],
-            seed=42
-        )
-        self.name = 'fake_vigo'
+from qiskit_ibm_runtime.fake_provider import FakeVigoV2, FakeGuadalupeV2
 
 def compact_circuit(tc, target, temps_mk, active_qubits):
     all_active = set(active_qubits)
@@ -71,6 +46,8 @@ def compact_circuit(tc, target, temps_mk, active_qubits):
     
     from qiskit.transpiler import Target
     compact_target = Target(num_qubits=len(mapping))
+    if getattr(target, 'qubit_properties', None):
+        compact_target.qubit_properties = [target.qubit_properties[orig_q] for orig_q in sorted(all_active)]
     for inst_name, inst_props in target.items():
         if inst_name in ['barrier', 'delay']: continue
         new_props = {}

@@ -38,9 +38,10 @@ def get_active_qubits(circuit: QuantumCircuit) -> set:
 def get_native_2q_gates(target: Target) -> list:
     native = []
     if not target: return ['cx']
-    for inst_name, _ in target.instructions:
-        if inst_name in ['cx', 'cz', 'ecr'] and inst_name not in native:
-            native.append(inst_name)
+    for inst, _ in target.instructions:
+        name = getattr(inst, 'name', str(inst))
+        if name in ['cx', 'cz', 'ecr'] and name not in native:
+            native.append(name)
     return native if native else ['cx']
 
 def count_native_2q(circuit: QuantumCircuit, target: Target) -> int:

@@ -1,6 +1,6 @@
 {
   "backend": "ibm_marrakesh",
-  "calibration_timestamp": "2026-10-08T01:27:11+05:30",
+  "calibration_timestamp": "2026-10-08T01:59:19+05:30",
   "num_qubits": 156,
   "properties": {
     "0": {

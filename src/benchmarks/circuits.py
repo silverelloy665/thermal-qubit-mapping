@@ -87,6 +87,7 @@ def get_mirror(n: int, seed: int = 42) -> QuantumCircuit:
     # Layer 5: inverse of forward circuit
     inv = fwd.inverse()
     qc.compose(fwd, inplace=True)
+    qc.barrier()
     qc.compose(inv, inplace=True)
     qc.measure_all()
     return qc

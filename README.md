@@ -13,7 +13,8 @@ This project extends the standard ESP metric to incorporate a thermal penalty te
    - `raw_upper_bound`: Penalizes every operation based on $p_1$.
    - `excess_over_readout`: Penalizes only the thermal error that exceeds the calibrated readout error.
 2. **Thermal-Aware Mapper**: A heuristic search mapper that explores connected subgraphs of the QPU, evaluating both standard and thermal ESP to find the optimal layout.
-3. **Simulation and Hardware Validation**: We validate the mappers using `Qiskit Aer` density matrix simulations with injected thermal noise models, followed by real hardware executions via `qiskit-ibm-runtime` (SamplerV2).
+3. **Simulation and Hardware Validation**: We validate the mappers using `Qiskit Aer` simulations with injected thermal noise models, followed by real hardware executions via `qiskit-ibm-runtime` (SamplerV2).
+4. **Excited State Population Measurement ($p_1$)**: The measurement script `scripts/measure_p1.py` measures $P(1|0)$ across all backend qubits. Note that measured $P(1|0)$ includes readout assignment error and is not a pure thermodynamic temperature measurement; `readout_asymmetry` ($P(0|1) - P(1|0)$) and target readout errors are retained in the output JSON.
 
 ## Repository Structure
 
