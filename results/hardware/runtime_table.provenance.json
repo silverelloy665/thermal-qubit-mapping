@@ -1,9 +1,9 @@
 {
   "csv_file": "runtime_table.csv",
-  "csv_path": "D:\\dev\\thermal_qubit_mapping\\results\\hardware\\runtime_table.csv",
-  "generated_at": "2026-10-08T22:47:34.256353",
+  "csv_path": "C:\\Users\\Aarush\\Desktop\\Thermal_Qubit\\thermal-qubit-mapping\\results\\hardware\\runtime_table.csv",
+  "generated_at": "2026-10-09T01:30:36.529682",
   "git": {
-    "commit": "0c624946a922",
+    "commit": "414564910f1c",
     "branch": "main",
     "dirty": true
   },

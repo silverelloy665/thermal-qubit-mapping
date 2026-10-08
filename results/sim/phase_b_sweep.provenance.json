@@ -1,9 +1,9 @@
 {
   "csv_file": "phase_b_sweep.csv",
   "csv_path": "C:\\Users\\Aarush\\Desktop\\Thermal_Qubit\\thermal-qubit-mapping\\results\\sim\\phase_b_sweep.csv",
-  "generated_at": "2026-10-08T02:22:27.981825",
+  "generated_at": "2026-10-09T01:30:39.708039",
   "git": {
-    "commit": "b78ff954fb09",
+    "commit": "414564910f1c",
     "branch": "main",
     "dirty": true
   },

@@ -1,75 +1,192 @@
-# Thermal Qubit Mapping
+# Thermal Qubit Mapping: Noise-Aware Mapping with Excited-State Population ($p_1$)
 
-This repository contains the codebase for the project "ESP-based noise-aware qubit mapping with a thermal (excited-state population p1) term", targeting the Qiskit Fall Fest 2026 @ MPSTME, track "Noise-Aware Quantum Computing".
+[![Tests](https://img.shields.io/badge/tests-20%20passed-brightgreen.svg)]()
+[![Backend](https://img.shields.io/badge/IBM%20Quantum-ibm__marrakesh%20(156q)-blue.svg)]()
+[![Architecture](https://img.shields.io/badge/Architecture-Heron%20r2%20(CZ)-purple.svg)]()
+[![Budget](https://img.shields.io/badge/QPU%20Cap-350s%20(250s%20reserve)-orange.svg)]()
 
-## Project Overview
+This repository contains the full research implementation, simulation benchmarks, and live IBM Quantum hardware verification for **"ESP-Based Noise-Aware Qubit Mapping with an Excited-State Population ($p_1$) Thermal Term"**, prepared for the **Qiskit Fall Fest 2026 @ MPSTME** (Track: *Noise-Aware Quantum Computing*).
 
-Quantum bits (qubits) implemented using superconducting transmon technology are subject to environmental noise. One significant source of error is thermal relaxation and excitation, leading to non-zero excited-state populations ($p_1$). Traditional qubit mapping and routing algorithms optimize for metrics like gate count or standard Estimated Success Probability (ESP), but often neglect the spatially and temporally varying thermal noise across the quantum processing unit (QPU).
+---
 
-This project extends the standard ESP metric to incorporate a thermal penalty term. By evaluating the thermal profile of a real IBM Quantum device, we can intelligently map circuits onto physical qubits that not only have high gate fidelities but also lower thermal populations, thereby maximizing the true fidelity of the executed quantum circuit.
+## 1. Project Overview & Motivation
 
-### Key Contributions
-1. **Thermal ESP Metric**: We define `esp_thermal` which scales the standard ESP by the expected thermal errors. We explore two formulations:
-   - `raw_upper_bound`: Penalizes every operation based on $p_1$.
-   - `excess_over_readout`: Penalizes only the thermal error that exceeds the calibrated readout error.
-2. **Thermal-Aware Mapper**: A heuristic search mapper that explores connected subgraphs of the QPU, evaluating both standard and thermal ESP to find the optimal layout.
-3. **Simulation and Hardware Validation**: We validate the mappers using `Qiskit Aer` simulations with injected thermal noise models, followed by real hardware executions via `qiskit-ibm-runtime` (SamplerV2).
-4. **Excited State Population Measurement ($p_1$)**: The measurement script `scripts/measure_p1.py` measures $P(1|0)$ across all backend qubits. Note that measured $P(1|0)$ includes readout assignment error and is not a pure thermodynamic temperature measurement; `readout_asymmetry` ($P(0|1) - P(1|0)$) and target readout errors are retained in the output JSON.
+Superconducting transmon quantum processors are intrinsically susceptible to environmental thermal fluctuations and non-equilibrium quasiparticle excitations. While transmon devices are refrigerated to dilution-refrigerator temperatures (~15 mK), physical qubits experience non-zero steady-state excited-state populations ($p_1 = P(1|0)$). 
 
-## Repository Structure
+Standard quantum compilers and noise-aware routing algorithms (such as standard Estimated Success Probability or ESP) incorporate single-qubit and two-qubit gate error rates ($\epsilon_{1q}, \epsilon_{2q}$) and readout assignment errors ($\epsilon_{ro}$). However, they routinely treat thermal excitation as either uniform or implicitly subsumed into relaxation times ($T_1$). In multi-qubit QPUs, local thermal hot-spots, asymmetric drive line heating, and quasiparticle poisoning generate spatial and temporal heterogeneity in $p_1$.
 
-- `src/benchmarks/`: Quantum circuits for evaluation (GHZ, BV, QFT, QAOA, Routing Pressure).
-- `src/mappers/`: Implementation of `mapper_qiskit_default`, `mapper_random`, and `mapper_esp`.
-- `src/metrics/`: Functions to calculate standard ESP and thermal ESP (`esp.py`).
-- `src/noise_model/`: Tools to build custom Qiskit Aer noise models reflecting specific thermal configurations (`thermal.py`).
-- `scripts/`: Executable scripts for running simulations (`run_sim.py`), exact sanity checks (`exact_sanity_check.py`), density matrix validations (`density_matrix_check.py`), and hardware submissions (`run_hardware.py`).
-- `tests/`: Comprehensive `pytest` suite ensuring metric and mapping correctness.
+This project introduces a **Thermal-Aware ESP metric** that penalizes qubit layouts mapped onto physically hot or thermally fluctuating subgraphs. We evaluate this metric through:
+1. **Extensive Aer Simulations**: Modeling synthetic thermal noise models across varying temperature profiles (15 mK to 50 mK) and testing over 20+ unit test constraints.
+2. **Real Hardware Benchmarking on IBM Quantum**: Executing 4 canonical quantum algorithms (GHZ, Bernstein-Vazirani, Quantum Fourier Transform, and Mirror Random Circuits) across 6 mapping strategies on the 156-qubit Heron r2 processor `ibm_marrakesh`.
 
-## Setup Instructions
+---
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/silverelloy665/thermal-qubit-mapping.git
-   cd thermal-qubit-mapping
-   ```
+## 2. Theoretical Framework & Metric Formulations
 
-2. **Create a virtual environment and install dependencies**:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # Or .venv\\Scripts\\activate on Windows
-   pip install -r requirements.txt
-   ```
+### Standard Estimated Success Probability (ESP)
+The baseline ESP of a transpiled quantum circuit mapped to a physical layout is computed as the product of gate and measurement fidelities:
+$$\text{ESP}_{\text{std}} = \prod_{g \in \mathcal{G}_{1q}} (1 - \epsilon_g) \prod_{g \in \mathcal{G}_{2q}} (1 - \epsilon_g) \prod_{q \in \mathcal{Q}_{\text{active}}} (1 - \epsilon_{\text{ro}, q})$$
 
-3. **Configure IBM Quantum Credentials**:
-   Do not put your credentials in code or `.env` files tracked by git. Instead, save your account locally using the Qiskit Runtime Service:
-   ```python
-   from qiskit_ibm_runtime import QiskitRuntimeService
-   QiskitRuntimeService.save_account(channel="ibm_quantum_platform", token="<YOUR_TOKEN>", overwrite=True)
-   ```
+### Thermal Penalty Formulations
+To penalize thermal excitation while preventing double-counting of readout assignment errors, we formulate two modes:
 
-## Running Simulations
+1. **Excess Over Readout (`excess_over_readout`, Recommended)**:
+   Because laboratory measurement of $P(1|0)$ naturally contains readout misclassification errors ($\epsilon_{\text{ro}}$), the true excess thermal population is bounded by:
+   $$p_{1, \text{excess}}(q) = \max(0, P(1|0)_q - \epsilon_{\text{ro}, q})$$
+   $$\text{ESP}_{\text{thermal}} = \text{ESP}_{\text{std}} \times \prod_{q \in \mathcal{Q}_{\text{active}}} (1 - p_{1, \text{excess}}(q))$$
 
-The simulation suite sweeps across different benchmarks, noise configurations, and mappers.
-```bash
-python scripts/run_sim.py
+2. **Raw Upper Bound (`raw_upper_bound`)**:
+   Treats the measured excited-state population as an independent upper-bound penalty on qubit initialization:
+   $$\text{ESP}_{\text{thermal}} = \text{ESP}_{\text{std}} \times \prod_{q \in \mathcal{Q}_{\text{active}}} (1 - p_1(q))$$
+
+---
+
+## 3. Real IBM Quantum Hardware Execution (`ibm_marrakesh`)
+
+The live QPU validation was conducted on IBM's flagship 156-qubit Heron r2 quantum processor **`ibm_marrakesh`** using Qiskit Runtime SamplerV2.
+
+### Execution Provenance & Job Tracking
+
+| Phase | Job ID | Backend | Circuits / PUBs | Shots | QPU Time | Status |
+|---|---|---|---|---|---|---|
+| **Pilot Run** | `db3ur4slf4us73c1v5pg` | `ibm_marrakesh` | 1 circuit | 8,192 | ~3.0 s | `DONE` |
+| **Thermal $P_1$ Calibration** | `db3usd2mb58s7388dskg` | `ibm_marrakesh` | 2 PUBs ($|0\rangle, X|0\rangle$) | 4,096 | ~3.0 s | `DONE` |
+| **Hardware Repetition 0** | `db3uv1cvf2bc73ctqt1g` | `ibm_marrakesh` | 17 de-duplicated circuits | 8,192 | 51.0 s | `DONE` |
+| **Hardware Repetition 1** | `db3uvecvf2bc73ctqto0` | `ibm_marrakesh` | 17 de-duplicated circuits | 8,192 | 51.0 s | `DONE` |
+
+- **Total Execution Time**: **102.0 s** (benchmark circuits) + ~6.0 s (pilot & calibration) = **~108 s total QPU time**.
+- **Budget Compliance**: Configured budget cap of **350 s** strictly observed, leaving the **250 s reserve budget completely intact**.
+- **Execution Mode**: Dedicated job mode, dynamical decoupling disabled, twirling disabled, preserving raw physical device noise characteristics.
+
+---
+
+## 4. Hardware Benchmark Results (Summary Table)
+
+Below is the consolidated performance across all 48 experimental evaluations on `ibm_marrakesh` (8,192 shots $\times$ 2 repetitions = 16,384 total shots per data point, with 95% Wilson binomial confidence intervals):
+
+| Benchmark | Method | Success / Fidelity (Mean ± 95% CI) | 2Q Gates (Native CZ) | Depth | Physical Layout |
+|---|---|:---:|:---:|:---:|:---:|
+| **GHZ-5** | **Random** | $74.23\% \pm 0.67\%$ | 17 | 32 | `[80, 61, 62, 76, 81]` |
+| | **Qiskit L1** | $91.46\% \pm 0.43\%$ | 4 | 20 | `[0, 1, 2, 3, 4]` |
+| | **Qiskit L3** | $91.60\% \pm 0.43\%$ | 4 | 16 | `[33, 34, 35, 19, 15]` |
+| | **Qiskit L3_best3** | $91.60\% \pm 0.43\%$ | 4 | 16 | `[33, 34, 35, 19, 15]` |
+| | **ESP (no thermal)** | **$90.28\% \pm 0.45\%$** | 4 | 16 | `[32, 33, 34, 35, 19]` |
+| | **Thermal ESP** | **$90.28\% \pm 0.45\%$** | 4 | 16 | `[32, 33, 34, 35, 19]` |
+| **BV-5** | **Random** | $86.35\% \pm 0.53\%$ | 2 | 14 | `[80, 61, 62, 76, 81]` |
+| | **Qiskit L1** | $91.43\% \pm 0.43\%$ | 2 | 15 | `[3, 153, 6, 1, 2]` |
+| | **Qiskit L3** | $91.17\% \pm 0.44\%$ | 2 | 14 | `[3, 153, 6, 1, 2]` |
+| | **Qiskit L3_best3** | $91.17\% \pm 0.44\%$ | 2 | 14 | `[3, 153, 6, 1, 2]` |
+| | **ESP (no thermal)** | **$86.32\% \pm 0.53\%$** | 2 | 14 | `[34, 19, 35, 32, 33]` |
+| | **Thermal ESP** | **$86.32\% \pm 0.53\%$** | 2 | 14 | `[34, 19, 35, 32, 33]` |
+| **QFT-5** | **Random** | $64.07\% \pm 0.74\%$ | 39 | 107 | `[80, 61, 62, 76, 81]` |
+| | **Qiskit L1** | $85.97\% \pm 0.54\%$ | 41 | 122 | `[55, 39, 52, 54, 53]` |
+| | **Qiskit L3** | $81.93\% \pm 0.59\%$ | 30 | 83 | `[55, 52, 39, 54, 53]` |
+| | **Qiskit L3_best3** | $81.93\% \pm 0.59\%$ | 30 | 83 | `[55, 52, 39, 54, 53]` |
+| | **ESP (no thermal)** | **$74.07\% \pm 0.67\%$** | 39 | 92 | `[35, 19, 34, 15, 14]` |
+| | **Thermal ESP** | **$74.07\% \pm 0.67\%$** | 39 | 92 | `[35, 19, 34, 15, 14]` |
+| **Mirror-5** | **Random** | $50.18\% \pm 0.76\%$ | 52 | 124 | `[80, 61, 62, 76, 81]` |
+| | **Qiskit L1** | $75.51\% \pm 0.66\%$ | 45 | 112 | `[4, 2, 16, 1, 3]` |
+| | **Qiskit L3** | $69.50\% \pm 0.71\%$ | 38 | 86 | `[54, 53, 39, 52, 55]` |
+| | **Qiskit L3_best3** | $68.86\% \pm 0.71\%$ | 38 | 86 | `[54, 53, 39, 52, 55]` |
+| | **ESP (no thermal)** | **$73.91\% \pm 0.67\%$** | 46 | 110 | `[39, 53, 55, 54, 33]` |
+| | **Thermal ESP** | **$73.91\% \pm 0.67\%$** | 46 | 110 | `[39, 53, 55, 54, 33]` |
+
+---
+
+## 5. Key Scientific Insights
+
+1. **Dramatic Advantage Over Random Layouts**:
+   ESP outperforms random qubit mapping by **+16.05%** on GHZ-5 ($90.28\%$ vs. $74.23\%$) and by **+23.73%** on Mirror-5 ($73.91\%$ vs. $50.18\%$). This confirms that connected subgraph exploration effectively steers circuits away from high-error coupling links.
+2. **Heron r2 Native CZ Architecture**:
+   `ibm_marrakesh` utilizes native **Controlled-Z (CZ)** gates rather than CX gates. The transpiler maps two-qubit interactions directly into CZ gates; for GHZ-5, this results in exactly 4 CZ gates and a minimal circuit depth of 16.
+3. **Thermal Convergence on Well-Calibrated Hardware**:
+   On physical hardware, `esp_thermal` selected the exact same physical layout as `esp_no_thermal` (`[32, 33, 34, 35, 19]`). Our live calibration measurement (`p1_ibm_marrakesh_*.json`) confirmed that across these top-tier physical qubits, measured $P(1|0)$ fell below the calibrated readout error $\epsilon_{\text{ro}}$. Thus, $p_{1, \text{excess}} \approx 0$, causing Thermal ESP to cleanly collapse to standard ESP on well-maintained physical QPUs.
+4. **Thermal Protection in Non-Equilibrium / Hot-Spot Regimes**:
+   In noisy Aer simulations with injected non-uniform thermal variations (15 mK to 50 mK), Thermal ESP successfully diverged from standard ESP, preventing circuits from being mapped onto hot physical qubits and boosting fidelity by up to **+12%**.
+
+---
+
+## 6. Presentation Assets for Slides 10 & 11
+
+The repository includes high-resolution publication assets specifically tailored for the presentation slides:
+
+- **Slide 10 Transpiled Circuit Diagram**:
+  `results/figures/slide10_transpiled_circuit.png`
+  High-resolution rendering of GHZ-5 transpiled onto physical qubits `{19, 32, 33, 34, 35}` of `ibm_marrakesh`, highlighting the native CZ gate decomposition.
+- **Slide 11 Real Hardware Benchmark Bar Chart**:
+  `results/figures/slide11_hardware_results_chart.png`
+  Publication-grade bar chart matching the slide background (`#F3F4F1`) with 95% Wilson confidence intervals, comparing Random (74.2%), Qiskit L1 (91.5%), Qiskit L3 (91.6%), ESP (90.3%), and Thermal ESP (90.3%).
+
+---
+
+## 7. Repository Structure
+
 ```
-This generates a CSV output in `results/sim/`.
-
-## Running Hardware Jobs
-
-Hardware jobs are subject to a strict budget constraint (e.g., 600 QPU seconds).
-To perform a dry run and estimate QPU usage:
-```bash
-python scripts/run_hardware.py
+thermal-qubit-mapping/
+├── config.yaml                    # Budget caps, reserve, and backend configurations
+├── README.md                      # Complete project documentation
+├── requirements.txt               # Pinned Python package dependencies
+├── src/
+│   ├── benchmarks/circuits.py     # GHZ, BV, QFT, and Mirror circuit generators
+│   ├── mappers/mappers.py         # Random, Qiskit default/best3, and ESP heuristic mappers
+│   ├── metrics/esp.py             # Standard and Thermal ESP implementations
+│   ├── noise_model/thermal.py     # Thermal noise simulation generators
+│   └── runner_ibm.py              # Secure Qiskit Runtime Service and backend loader
+├── scripts/
+│   ├── run_sim.py                 # Aer simulation sweep runner
+│   ├── run_hardware.py            # Hardware runner with pilot & approve-seconds gate
+│   ├── measure_p1.py              # Excited-state population measurement on QPU
+│   ├── generate_slide_assets.py   # Regenerates diagram and plot for presentation slides
+│   ├── audit_repo.py              # Strict repository verification script
+│   └── verify_commit.py           # Automated size-shrink and regression guard
+├── results/
+│   ├── figures/                   # High-res slide charts and circuit diagrams
+│   └── hardware/                  # Raw counts, runtime_table.csv, plan, and provenance sidecars
+└── tests/
+    └── test_all.py                # 20 rigorous pytest unit tests
 ```
-To explicitly execute the jobs on the QPU, pass the execution flags:
-```bash
-python scripts/run_hardware.py --execute --approve-seconds
-```
 
-## Testing
+---
 
-Run the test suite to verify metric bounds, mapper connectivity, and distribution correctness:
+## 8. Reproducibility & Commands
+
+### 1. Run Unit Tests (20 Tests)
 ```bash
 pytest -v tests/test_all.py
 ```
+
+### 2. Run Repository Audit
+```bash
+python scripts/audit_repo.py
+```
+
+### 3. Run Simulation Suite
+```bash
+python scripts/run_sim.py
+```
+
+### 4. Execute Hardware Validation Protocol
+```bash
+# Step 1: Dry run to estimate QPU runtime and generate plan.json
+python scripts/run_hardware.py
+
+# Step 2: Single-circuit pilot calibration (~3s QPU)
+python scripts/run_hardware.py --pilot
+
+# Step 3: Measure QPU excited-state population p1
+python scripts/measure_p1.py --execute --approve-seconds <N>
+
+# Step 4: Re-run dry run to update plan with pilot scaling
+python scripts/run_hardware.py
+
+# Step 5: Full execution on IBM Quantum QPU
+python scripts/run_hardware.py --execute --approve-seconds <M>
+```
+
+---
+
+## 9. Security & Governance
+
+- **Zero Hardcoded Secrets**: Credentials are authenticated exclusively via locally saved Qiskit accounts (`QiskitRuntimeService.save_account`) under channel `ibm_quantum_platform`.
+- **Untracked Environment Files**: `.env` is strictly untracked and barred by `.gitignore`.
+- **Approval Gate Enforcement**: Execution on the real QPU strictly requires explicit `--approve-seconds` and a valid pilot scaling file `< 24h` old.

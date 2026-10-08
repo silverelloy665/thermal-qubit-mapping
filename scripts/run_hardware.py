@@ -111,7 +111,8 @@ def build_circuits_and_metadata(benchmarks, target, backend):
         for m_name, tc, lay in candidates:
             isa = pm.run(tc)
             validate_isa(isa, target)
-            cx_c = isa.count_ops().get('cx', 0)
+            ops = isa.count_ops()
+            cx_c = ops.get('cz', ops.get('cx', ops.get('ecr', 0)))
             depth_val = isa.depth()
             items.append({
                 'benchmark': b_name,
