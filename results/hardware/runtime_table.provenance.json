@@ -1,9 +1,9 @@
 {
   "csv_file": "runtime_table.csv",
-  "csv_path": "C:\\Users\\Aarush\\Desktop\\Thermal_Qubit\\thermal-qubit-mapping\\results\\hardware\\runtime_table.csv",
-  "generated_at": "2026-10-08T02:28:37.151167",
+  "csv_path": "D:\\dev\\thermal_qubit_mapping\\results\\hardware\\runtime_table.csv",
+  "generated_at": "2026-10-08T22:47:34.256353",
   "git": {
-    "commit": "b78ff954fb09",
+    "commit": "0c624946a922",
     "branch": "main",
     "dirty": true
   },
@@ -17,7 +17,7 @@
     "python": "3.13.12 (tags/v3.13.12:1cbe481, Feb  3 2026, 18:22:25) [MSC v.1944 64 bit (AMD64)]"
   },
   "summary": {
-    "row_count": 40,
+    "row_count": 48,
     "column_count": 15,
     "columns": [
       "job_id",

@@ -11,7 +11,10 @@ experiment:
   thermal_term_mode: excess_over_readout
   qubit_region: all
 
+backend: ibm_marrakesh
+
 backends:
+  backend: ibm_marrakesh
   fake_5q: "fake_vigo"
   fake_16q: "fake_guadalupe"
   backend_selection:

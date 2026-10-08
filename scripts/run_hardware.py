@@ -25,7 +25,7 @@ from qiskit_ibm_runtime import SamplerV2 as Sampler
 sys.path.append(str(Path(__file__).parent.parent))
 from src.noise_model.profile import load_config
 from src.benchmarks.circuits import get_all_benchmarks
-from src.mappers.mappers import mapper_random, mapper_qiskit_default, mapper_esp
+from src.mappers.mappers import mapper_random, mapper_qiskit_default, mapper_esp, mapper_qiskit_best3
 from src.metrics.outcome import compute_outcome_metric, compute_ideal_distribution
 from src.runner_ibm import (
     get_ibm_service, get_backend, get_calibration_timestamp,
@@ -92,6 +92,8 @@ def build_circuits_and_metadata(benchmarks, target, backend):
         tc_l1, _, _, lay_l1, _ = mapper_qiskit_default(b_circ, target, level=1)
         # 3. qiskit_L3
         tc_l3, _, _, lay_l3, _ = mapper_qiskit_default(b_circ, target, level=3)
+        # 3b. qiskit_L3_best3
+        tc_l3_b3, _, _, lay_l3_b3, _ = mapper_qiskit_best3(b_circ, target, level=3, routing_seeds=3)
         # 4. esp_no_thermal
         tc_esp_no, _, _, lay_esp_no, _ = mapper_esp(b_circ, target, temps_mk=None, use_thermal=False, exhaustive=False)
         # 5. esp_thermal (uses uniform 15mK or measured p1 if available)
@@ -101,6 +103,7 @@ def build_circuits_and_metadata(benchmarks, target, backend):
             ('random', tc_rand, lay_rand),
             ('qiskit_L1', tc_l1, lay_l1),
             ('qiskit_L3', tc_l3, lay_l3),
+            ('qiskit_L3_best3', tc_l3_b3, lay_l3_b3),
             ('esp_no_thermal', tc_esp_no, lay_esp_no),
             ('esp_thermal', tc_esp_th, lay_esp_th),
         ]

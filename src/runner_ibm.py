@@ -15,8 +15,20 @@ def get_ibm_service():
 
 def get_backend(service, config):
     """
-    Selects a backend based on lowest pending jobs.
+    Selects backend pinned in config or falls back to lowest pending jobs.
     """
+    pinned = config.get("backend") or config.get("backends", {}).get("backend")
+    if pinned:
+        backends = service.backends()
+        matching = [b for b in backends if b.name == pinned]
+        if not matching:
+            raise ValueError(f"Pinned backend '{pinned}' not found among available backends.")
+        backend = matching[0]
+        status = backend.status()
+        if not getattr(status, "operational", False):
+            raise ValueError(f"Pinned backend '{pinned}' is not operational (status: {status}).")
+        return backend
+
     sel = config.get("backends", {}).get("backend_selection", {})
     min_q = sel.get("min_num_qubits", 127)
     sim = sel.get("simulator", False)
