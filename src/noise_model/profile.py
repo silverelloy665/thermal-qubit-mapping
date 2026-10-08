@@ -12,7 +12,7 @@ def get_thermal_profile(num_qubits: int, config: dict) -> dict:
     for q in range(num_qubits):
         temps_mk[q] = default_temp
         
-    for hot in config['thermal']['hot_qubits']:
+    for hot in config['thermal'].get('hot_qubits', []):
         idx = hot['index']
         if idx < num_qubits:
             temps_mk[idx] = hot['temp_mK']
