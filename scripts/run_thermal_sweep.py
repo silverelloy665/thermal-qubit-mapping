@@ -98,11 +98,13 @@ def simulate_with_mixture_compact(tc: QuantumCircuit, target, lay: list, true_ex
             
     return tot_counts
 
-def run_thermal_sweep(num_seeds: int = 10, shots: int = 8192) -> tuple[pd.DataFrame, dict]:
+def run_thermal_sweep(num_seeds: int = 10, shots: int = 8192, output_csv: str = "results/sim/thermal_sweep.csv", device_filter: str = None, max_cells: int = None) -> tuple[pd.DataFrame, dict]:
     devices = {
         'fake_vigo': FakeVigoV2(),
         'fake_guadalupe': FakeGuadalupeV2()
     }
+    if device_filter:
+        devices = {k: v for k, v in devices.items() if k == device_filter}
     
     # Assert qubit_properties exist on targets
     for dev_name, dev in devices.items():
@@ -154,11 +156,16 @@ def run_thermal_sweep(num_seeds: int = 10, shots: int = 8192) -> tuple[pd.DataFr
                     continue
                     
                 for excess_p1 in excess_grid:
+                    if max_cells and cell_idx >= max_cells:
+                        break
                     cell_idx += 1
                     cell_draws_changed = 0
                     paired_gains = []
                     paired_oracle_gains = []
                     gains_vs_l3 = []
+                    scores_no = []
+                    scores_th = []
+                    scores_l3 = []
                     
                     for s in range(num_seeds):
                         seed_val = 1000 * cell_idx + s
@@ -273,12 +280,18 @@ def run_thermal_sweep(num_seeds: int = 10, shots: int = 8192) -> tuple[pd.DataFr
                     
                     print(f"[{cell_idx}/{total_cells}] {dev_name:<14} | {b_name:<6} | hot={k_hot} | excess={excess_p1:5.3f} => changed: {change_frac:.2f} | gain: {mean_gain:+.4f} [{ci_low:+.4f}, {ci_high:+.4f}]")
                     sys.stdout.flush()
+                if max_cells and cell_idx >= max_cells:
+                    break
+            if max_cells and cell_idx >= max_cells:
+                break
+        if max_cells and cell_idx >= max_cells:
+            break
                     
     elapsed = time.time() - t_start
     print(f"\nSweep completed in {elapsed:.1f} s ({elapsed/60.0:.2f} min).")
     
     df_sweep = pd.DataFrame(records)
-    out_csv = Path("results/sim/thermal_sweep.csv")
+    out_csv = Path(output_csv)
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     df_sweep.to_csv(out_csv, index=False)
     print(f"Saved thermal sweep results to {out_csv} ({len(df_sweep)} rows).")
@@ -390,9 +403,9 @@ def replay_real_hardware_p1():
     print("=" * 80 + "\n")
 
 def print_threshold_summary(df_sweep: pd.DataFrame):
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 105)
     print("SWEEP THRESHOLD SUMMARY (Statistical vs Practical Thresholds):")
-    print("=" * 80)
+    print("=" * 105)
     summary_rows = []
     bench_names = ['ghz', 'bv', 'qft', 'mirror']
     for dev_name in df_sweep['device'].unique():
@@ -404,22 +417,31 @@ def print_threshold_summary(df_sweep: pd.DataFrame):
                 stat_rows = sub[sub['paired_gain_ci_low'] > 0.0]
                 stat_th = f"{stat_rows['excess_p1'].min():.3f}" if not stat_rows.empty else "none found"
                 prac_rows = sub[(sub['paired_gain_mean'] >= 0.005) & (sub['paired_gain_ci_low'] > 0.0)]
-                prac_th = f"{prac_rows['excess_p1'].min():.3f}" if not prac_rows.empty else "none found"
+                if not prac_rows.empty:
+                    min_prac_excess = prac_rows['excess_p1'].min()
+                    thresh_row = prac_rows[prac_rows['excess_p1'] == min_prac_excess].iloc[0]
+                    prac_th = f"{min_prac_excess:.3f}"
+                    gain_at_th = f"{thresh_row['paired_gain_mean']*100:+.2f} pts [{thresh_row['paired_gain_ci_low']*100:+.2f}, {thresh_row['paired_gain_ci_high']*100:+.2f}]"
+                else:
+                    prac_th = "none found"
+                    gain_at_th = "N/A"
                 summary_rows.append({
                     'device': dev_name,
                     'benchmark': b_name,
                     'hot_qubits': k,
                     'statistical_threshold': stat_th,
-                    'practical_threshold': prac_th
+                    'practical_threshold': prac_th,
+                    'gain_at_threshold': gain_at_th
                 })
     sum_df = pd.DataFrame(summary_rows)
     print(sum_df.to_string(index=False, justify='center'))
-    print("=" * 80 + "\n")
+    print("=" * 105 + "\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run thermal-gradient sensitivity sweep.")
     parser.add_argument("--seeds", type=int, default=10, help="Profile seeds per cell.")
     parser.add_argument("--shots", type=int, default=8192, help="Shots per simulation.")
+    parser.add_argument("--output", default="results/sim/thermal_sweep.csv", help="Output CSV path.")
     parser.add_argument("--replay-only", action="store_true", help="Only run hardware replay check.")
     parser.add_argument("--summary-only", action="store_true", help="Print threshold summary from existing results.")
     args = parser.parse_args()
@@ -429,11 +451,11 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if args.summary_only:
-        df_existing = pd.read_csv("results/sim/thermal_sweep.csv")
+        df_existing = pd.read_csv(args.output)
         print_threshold_summary(df_existing)
         sys.exit(0)
         
-    df_res, thresholds = run_thermal_sweep(num_seeds=args.seeds, shots=args.shots)
+    df_res, thresholds = run_thermal_sweep(num_seeds=args.seeds, shots=args.shots, output_csv=args.output)
     plot_thermal_threshold(df_res)
     replay_real_hardware_p1()
     print_threshold_summary(df_res)

@@ -109,10 +109,14 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 > - **Shared circuit => thermal == ESP by construction**: On `ibm_marrakesh`, thermal ESP and standard ESP selected the exact same physical layouts (`shared_circuit=True`) because measured $P(1|0)$ across the chosen active qubits remained near or below calibrated readout error $\epsilon_{\text{ro}}$ (excess $<0.02$ on all chosen qubits; e.g., mirror layout includes qubit 54 with excess 0.012). This identity is by construction of the de-duplicated circuit pipeline and does not represent independent empirical convergence.
 > - **Heron r2 Native CZ Architecture**: `ibm_marrakesh` natively executes Controlled-Z (CZ) two-qubit operations, compiling GHZ-5 into exactly 4 CZ gates at minimal circuit depth 16.
 > - **Scope & Limits**: All hardware measurements were conducted on one backend (`ibm_marrakesh`), during one calibration day, with one fixed transpiled layout per cell across 2 repetitions of 8,192 shots (16,384 total pooled shots per cell). Consequently, confidence intervals quantify shot noise only.
-> - **Baseline Comparisons**: ESP significantly outperforms random qubit mapping by **+16.05%** on GHZ-5 ($90.28\%$ vs. $74.23\%$) and by **+23.73%** on Mirror-5 ($73.91\%$ vs. $50.18\%$). Compared against Qiskit L3, ESP yields -1.32 pts (GHZ), -4.85 pts (BV), -7.87 pts (QFT), and +4.41 pts (Mirror-5).
+> - **Baseline Comparisons**: ESP significantly outperforms random qubit mapping by **+16.05 pts** on GHZ-5 ($90.28\%$ vs. $74.23\%$) and by **+23.73 pts** on Mirror-5 ($73.91\%$ vs. $50.18\%$). Compared against Qiskit L3, ESP yields -1.32 pts (GHZ), -4.85 pts (BV), -7.87 pts (QFT), and +4.41 pts (Mirror-5).
 
 ### Thermal-Gradient Sensitivity Sweep Results (`results/sim/thermal_sweep.csv`)
 
+- **Baseline Comparative Performance vs Qiskit L3**:
+  - At zero excess, ESP trails L3 by 8.0, 2.7, 7.5, and 8.8 pts (GHZ, BV, QFT, Mirror) on `FakeGuadalupeV2`.
+  - In non-zero thermal excess regimes, thermal ESP beats L3 with a 95% bootstrap CI strictly greater than zero in only **1 of 72 hot cells** (GHZ-5, 2 hot qubits, $15\%$ excess: $+5.28\text{ pts}$, 95% CI $[+0.35, +9.81]$). By point estimate, thermal ESP beats L3 in **6 of 12 cells at 15% excess** (GHZ with 1, 2, 3 hot qubits; BV with 2, 3 hot qubits; QFT with 3 hot qubits); Mirror-5 never beats L3 across any parameter cell.
+- **Physical Prevalence of High-Thermal Regimes**: On `ibm_marrakesh`, only **4 of 156 qubits** exhibit $p_{1, \text{excess}} > 0.10$ (qubits 125, 22, 26, 11), with qubit 125 flagged as readout failure ($\epsilon_{\text{ro}} = 0.547$). Consequently, regimes where thermal ESP provides definitive routing advantages over L3 are physically rare.
 - **Guadalupe Practical Detection Thresholds**: On the 16-qubit `FakeGuadalupeV2` model, thermal ESP achieves practical sensitivity ($\text{gain} \ge 0.5\text{ pt}$ and 95% bootstrap CI lower bound $> 0$) at:
   - **GHZ-5**: $p_{1, \text{excess}} = 0.005$ across 1, 2, and 3 hot qubits.
   - **BV-5**: $p_{1, \text{excess}} = 0.020$ (1 hot qubit), $0.050$ (2 hot qubits), and $0.005$ (3 hot qubits).
