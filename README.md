@@ -95,14 +95,21 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 
 ## 5. Key Scientific Insights
 
-1. **Dramatic Advantage Over Random Layouts**:
-   ESP outperforms random qubit mapping by **+16.05%** on GHZ-5 ($90.28\%$ vs. $74.23\%$) and by **+23.73%** on Mirror-5 ($73.91\%$ vs. $50.18\%$). This confirms that connected subgraph exploration effectively steers circuits away from high-error coupling links.
-2. **Heron r2 Native CZ Architecture**:
-   `ibm_marrakesh` utilizes native **Controlled-Z (CZ)** gates rather than CX gates. The transpiler maps two-qubit interactions directly into CZ gates; for GHZ-5, this results in exactly 4 CZ gates and a minimal circuit depth of 16.
-3. **Thermal Convergence on Well-Calibrated Hardware**:
-   On physical hardware, `esp_thermal` selected the exact same physical layout as `esp_no_thermal` (`[32, 33, 34, 35, 19]`). Our live calibration measurement (`p1_ibm_marrakesh_*.json`) confirmed that across these top-tier physical qubits, measured $P(1|0)$ fell below the calibrated readout error $\epsilon_{\text{ro}}$. Thus, $p_{1, \text{excess}} \approx 0$, causing Thermal ESP to cleanly collapse to standard ESP on well-maintained physical QPUs.
-4. **Thermal Protection in Non-Equilibrium / Hot-Spot Regimes**:
-   In noisy Aer simulations with injected non-uniform thermal variations (15 mK to 50 mK), Thermal ESP successfully diverged from standard ESP, preventing circuits from being mapped onto hot physical qubits and boosting fidelity by up to **+12%**.
+### Consolidated Benchmark Comparison (Mean ± 95% Wilson CI)
+
+| Benchmark | Random | Qiskit L1 | Qiskit L3 | Qiskit L3_best3 | ESP (Plain / Thermal) |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **GHZ-5** | $74.23\% \pm 0.67\%$ | $91.46\% \pm 0.43\%$ | $91.60\% \pm 0.42\%$ | $91.60\% \pm 0.42\%$ | $90.28\% \pm 0.45\%$ |
+| **BV-5** | $86.35\% \pm 0.53\%$ | $91.43\% \pm 0.43\%$ | $91.17\% \pm 0.43\%$ | $91.17\% \pm 0.43\%$ | $86.32\% \pm 0.53\%$ |
+| **QFT-5** | $64.07\% \pm 0.73\%$ | $85.97\% \pm 0.53\%$ | $81.93\% \pm 0.59\%$ | $81.93\% \pm 0.59\%$ | $74.07\% \pm 0.67\%$ |
+| **Mirror-5** | $50.18\% \pm 0.77\%$ | $75.51\% \pm 0.66\%$ | $69.50\% \pm 0.70\%$ | $68.86\% \pm 0.71\%$ | $73.91\% \pm 0.67\%$ |
+
+> [!NOTE]
+> **Experimental Setup & Equivalence Notes**:
+> - **Shared circuit => thermal == ESP by construction**: On `ibm_marrakesh`, thermal ESP and standard ESP selected the exact same physical layouts (`shared_circuit=True`) because measured $P(1|0)$ across the chosen active qubits fell below the calibrated readout error $\epsilon_{\text{ro}}$ ($p_{1, \text{excess}} = 0$). This identity is by construction of the de-duplicated circuit pipeline and does not represent independent empirical convergence.
+> - **Scope & Limits**: All hardware measurements were conducted on one backend (`ibm_marrakesh`), during one calibration day, with one fixed transpiled layout per cell across 2 repetitions of 8,192 shots (16,384 total pooled shots per cell). Consequently, confidence intervals quantify shot noise only.
+> - **Baseline Comparisons**: ESP significantly outperforms random qubit mapping by **+16.05%** on GHZ-5 ($90.28\%$ vs. $74.23\%$) and by **+23.73%** on Mirror-5 ($73.91\%$ vs. $50.18\%$). Compared against Qiskit L3, ESP yields -1.32 pts (GHZ), -4.85 pts (BV), -7.87 pts (QFT), and +4.41 pts (Mirror-5).
+
 
 ---
 

@@ -403,6 +403,61 @@ def test_provenance_generation(tmp_path):
     assert "package_versions" in data
     assert data["summary"]["row_count"] == 2
 
+def test_claim_check_readme_and_unauthorized_pattern(tmp_path):
+    from scripts.claim_check import audit_readme
+    success, msg = audit_readme()
+    assert success is True, f"Claim audit failed on valid README: {msg}"
+
+    bad_readme = tmp_path / "README_bad.md"
+    bad_readme.write_text("This thermal mapping provides +15% improvement in hot-spot sims.")
+    bad_success, bad_msg = audit_readme(readme_path=str(bad_readme))
+    assert not bad_success
+    assert "Uncited gain claim" in bad_msg
+
+def test_analyze_hw_known_answer_synthetic():
+    from scripts.analyze_hw import two_proportion_z, cohens_h, newcombe_ci
+    # Case 1: Identical counts (diff = 0)
+    diff, p = two_proportion_z(500, 1000, 500, 1000)
+    assert math.isclose(diff, 0.0, abs_tol=1e-9)
+    assert math.isclose(p, 1.0, abs_tol=1e-9)
+    low, high = newcombe_ci(500, 1000, 500, 1000)
+    assert low < 0 < high
+    assert math.isclose(low, -high, abs_tol=1e-5)
+    h = cohens_h(0.5, 0.5)
+    assert math.isclose(h, 0.0, abs_tol=1e-9)
+
+    # Case 2: Distinct counts (p1 = 0.8, p2 = 0.5)
+    diff2, p2 = two_proportion_z(800, 1000, 500, 1000)
+    assert math.isclose(diff2, 0.30, abs_tol=1e-9)
+    assert p2 < 1e-10
+    low2, high2 = newcombe_ci(800, 1000, 500, 1000)
+    assert low2 > 0.25 and high2 < 0.35
+    h2 = cohens_h(0.8, 0.5)
+    assert h2 > 0.6
+
+def test_thermal_sweep_zero_excess_invariance():
+    from qiskit_ibm_runtime.fake_provider import FakeVigoV2
+    from src.benchmarks.circuits import get_all_benchmarks
+    from src.mappers.mappers import mapper_esp
+    dev = FakeVigoV2()
+    qc = get_all_benchmarks(5)['ghz']
+    tc_no, _, _, lay_no, _ = mapper_esp(qc, dev.target, use_thermal=False, routing_seeds=1, max_candidate_layouts=30)
+    tc_th, _, _, lay_th, _ = mapper_esp(qc, dev.target, p1={q: 0.0 for q in range(dev.target.num_qubits)}, use_thermal=True, routing_seeds=1, max_candidate_layouts=30)
+    # With excess_p1 == 0 everywhere, thermal ESP layout must match plain ESP layout exactly
+    assert lay_th == lay_no
+
+def test_target_qubit_properties_exist():
+    from qiskit_ibm_runtime.fake_provider import FakeVigoV2, FakeGuadalupeV2
+    vigo = FakeVigoV2()
+    guadalupe = FakeGuadalupeV2()
+    for dev in [vigo, guadalupe]:
+        assert dev.target.qubit_properties is not None, f"Target {dev.name} has no qubit_properties"
+        assert len(dev.target.qubit_properties) == dev.target.num_qubits
+        for q, prop in enumerate(dev.target.qubit_properties):
+            assert prop.t1 is not None and prop.t1 > 0, f"Qubit {q} on {dev.name} missing valid T1"
+            assert prop.t2 is not None and prop.t2 > 0, f"Qubit {q} on {dev.name} missing valid T2"
+
+
 
 
 
