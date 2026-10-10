@@ -1,0 +1,65 @@
+================================================================================
+IBM RUNTIME HARDWARE EXECUTION AUDIT NOTES
+Backend: ibm_marrakesh (156 qubits)
+================================================================================
+
+1. JOB IDS AND TIMINGS (IBM DASHBOARD & LOCAL AUDIT)
+--------------------------------------------------------------------------------
+- Pilot Job:
+    Job ID: db3ur4slf4us73c1v5pg
+    Note: taken from the IBM dashboard, verify full ID
+    Timestamp: 12:52 AM
+    QPU Execution Time: 4 s
+    Backend: ibm_marrakesh
+    Status: DONE
+
+- p1 Characterization Job:
+    Job ID: db3usd2mb58s7388dskg
+    Timestamp: 12:55 AM
+    QPU Execution Time: 4 s
+    Backend: ibm_marrakesh
+    Status: DONE
+
+- Repetition 0 (Benchmark Run 1):
+    Job ID: db3uv1cvf2bc73ctqt1g
+    Circuits: 24 (17 unique transpiled circuits across 4 benchmarks x 6 methods)
+    QPU Execution Time: 39 s
+    Backend: ibm_marrakesh
+    Status: DONE
+
+- Repetition 1 (Benchmark Run 2):
+    Job ID: db3uvecvf2bc73ctqto0
+    Circuits: 24 (17 unique transpiled circuits across 4 benchmarks x 6 methods)
+    QPU Execution Time: 39 s
+    Backend: ibm_marrakesh
+    Status: DONE
+
+
+2. QPU-TIME SECTION
+--------------------------------------------------------------------------------
+- IBM Quantum Platform Dashboard Usage:
+    * Total Dashboard Usage: 321 s of 600 s (28-day allocation allowance)
+    * Four Project Jobs Subtotal: 86 s
+        - Pilot Job (db3ur4slf4us73c1v5pg):          4 s
+        - p1 Characterization (db3usd2mb58s7388dskg): 4 s
+        - Repetition 0 (db3uv1cvf2bc73ctqt1g):        39 s
+        - Repetition 1 (db3uvecvf2bc73ctqto0):        39 s
+        - Four Project Jobs Total:                   86 s
+
+- Client-Side / Table Measurement Comparison:
+    * Table Repetition 0 run_seconds:             51.0 s
+    * Table Repetition 1 run_seconds:             51.0 s
+    * Client-side Table Benchmark Total:         102.0 s
+    * Pilot Calibration (qpu_scale.json):          3.0 s
+    * Client-Side Total:                         105.0 s
+
+- Budget & Safety Margins:
+    * Pre-execution Plan Estimate:               102.0 s
+    * Project Budget Cap:                        350.0 s
+    * 28-day Open Plan Allowance:                600.0 s
+    * Verification: Dashboard 4-job total (86 s) <= Project Cap (350.0 s) [PASS]
+    * Verification: Client-side total (105.0 s) <= Project Cap (350.0 s) [PASS]
+    * Verification: Total dashboard usage (321 s) <= Total allowance (600.0 s) [PASS]
+
+================================================================================
+

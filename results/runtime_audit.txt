@@ -1,21 +1,26 @@
 ================================================================================
 IBM RUNTIME HARDWARE EXECUTION AUDIT: CHECKPOINT M
-Audit Timestamp: 2026-10-10T20:32:54.514363+00:00
+Audit Timestamp: 2026-10-10T20:43:53.229666+00:00
 ================================================================================
 
 SECTION 1: JOB IDS AND BACKEND CONSISTENCY
 --------------------------------------------------------------------------------
-Discovered Job IDs in results/hardware/ (Total: 3):
+Discovered Job IDs in results/hardware/ (Total: 4):
+  - Job ID: db3ur4slf4us73c1v5pg
+    Source:  runtime_audit_notes.txt (pilot run, 12:52 AM, 4s)
+    Backend: ibm_marrakesh
+    Status:  DONE
+    Note:    taken from the IBM dashboard, verify full ID
+  - Job ID: db3usd2mb58s7388dskg
+    Source:  p1_ibm_marrakesh_20261009T001839_0530.json (p1 characterization, 12:55 AM, 4s)
+    Backend: ibm_marrakesh
+    Status:  DONE
   - Job ID: db3uv1cvf2bc73ctqt1g
-    Source:  runtime_table.csv (repetition 0, 24 circuits)
+    Source:  runtime_table.csv (repetition 0, 24 circuits, 39s)
     Backend: ibm_marrakesh
     Status:  DONE
   - Job ID: db3uvecvf2bc73ctqto0
-    Source:  runtime_table.csv (repetition 1, 24 circuits)
-    Backend: ibm_marrakesh
-    Status:  DONE
-  - Job ID: db3usd2mb58s7388dskg
-    Source:  p1_ibm_marrakesh_20261009T001839_0530.json (p1 characterization)
+    Source:  runtime_table.csv (repetition 1, 24 circuits, 39s)
     Backend: ibm_marrakesh
     Status:  DONE
 
@@ -26,19 +31,29 @@ Assertions:
 
 SECTION 2: QPU TIME ACCOUNTING
 --------------------------------------------------------------------------------
+  IBM Quantum Platform Dashboard Totals:
+  - Total Dashboard Usage:       321 s of 600 s (28-day allocation allowance)
+  - Four Project Jobs Total:     86 s
+      * Pilot (db3ur4slf4us73c1v5pg):   4 s (12:52 AM, taken from the IBM dashboard, verify full ID)
+      * p1 (db3usd2mb58s7388dskg):            4 s (12:55 AM)
+      * Repetition 0 (db3uv1cvf2bc73ctqt1g): 39 s
+      * Repetition 1 (db3uvecvf2bc73ctqto0): 39 s
+
+  Client-Side / Table Measurement Comparison:
   - Repetition 0 (db3uv1cvf2bc73ctqt1g): 51.0 s
   - Repetition 1 (db3uvecvf2bc73ctqto0): 51.0 s
   - Main Benchmarks Subtotal:    102.0 s
   - Pilot Job (8192 shots):        3.0 s
-  - p1 Characterization Job:     Not recorded in metadata JSON
+  - p1 Characterization Job:     Not recorded in metadata JSON (dashboard: 4 s)
   -------------------------------------------------------------
-  - Total Recorded QPU Usage:    105.0 s
+  - Total Recorded Client Usage: 105.0 s
   - Plan Pre-Execution Estimate: 102.0 s
   - Project Budget Cap:          350.0 s
-  - Total Allocation Allowance:  600.0 s (per 28-day cycle)
 
 Assertions:
-  [PASS] Total recorded QPU time (105.0 s) <= Project Cap (350.0 s).
+  [PASS] Four project jobs on dashboard (86 s) <= Project Cap (350.0 s).
+  [PASS] Dashboard cumulative usage (321 s) <= Total allowance (600 s).
+  [PASS] Total recorded client QPU time (105.0 s) <= Project Cap (350.0 s).
   [PASS] Main benchmark execution matches pre-execution plan estimate (102.0 s).
 
 SECTION 3: SHOTS AND SAMPLE SIZES
