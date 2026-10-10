@@ -362,20 +362,23 @@ def replay_real_hardware_p1():
         ro = ro_err.get(q_str, 0.0)
         excess = p1 - ro
         if excess > 0.01:
-            hot_qubits.append((q, p1, ro, excess))
+            flag = "readout failure, not thermal" if ro > 0.2 else "thermal excess"
+            hot_qubits.append((q, p1, ro, excess, flag))
             
     hot_qubits.sort(key=lambda x: x[3], reverse=True)
-    print(f"Total physical qubits with excess_p1 > 0.01: {len(hot_qubits)}")
-    print("Top 10 hottest physical qubits:")
-    for q, p1, ro, exc in hot_qubits[:10]:
-        print(f"  Qubit {q:3d}: measured p1 = {p1:.5f}, readout_error = {ro:.5f}, excess = {exc:.5f}")
+    print(f"Total physical qubits with excess_p1 > 0.01: {len(hot_qubits)}\n")
+    print(f"{'Qubit':<9} {'Measured p1':<13} {'Readout Error':<15} {'Excess p1':<13} {'Diagnosis / Flag':<30}")
+    print("-" * 82)
+    for q, p1, ro, exc, flag in hot_qubits:
+        print(f"Qubit {q:<4d} {p1:<13.5f} {ro:<15.5f} {exc:<13.5f} {flag:<30}")
+    print("-" * 82)
         
     # Check layouts in hardware runtime table
     df_hw = pd.read_csv("results/hardware/runtime_table.csv")
     print("\nLayout membership check for hot qubits on ibm_marrakesh:")
     for (b, m), g in df_hw.groupby(['benchmark', 'method']):
         lay = json.loads(g['layout'].iloc[0])
-        hot_in_lay = [q for q, _, _, _ in hot_qubits if q in lay]
+        hot_in_lay = [q for q, _, _, _, _ in hot_qubits if q in lay]
         has_11 = 11 in lay
         print(f"  {b:7s} {m:16s} | layout={lay} | hot_qubits_in_layout={hot_in_lay} | has_qubit_11={has_11}")
     print("=" * 80 + "\n")
@@ -384,8 +387,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run thermal-gradient sensitivity sweep.")
     parser.add_argument("--seeds", type=int, default=10, help="Profile seeds per cell.")
     parser.add_argument("--shots", type=int, default=8192, help="Shots per simulation.")
+    parser.add_argument("--replay-only", action="store_true", help="Only run hardware replay check.")
     args = parser.parse_args()
     
+    if args.replay_only:
+        replay_real_hardware_p1()
+        sys.exit(0)
+        
     df_res, thresholds = run_thermal_sweep(num_seeds=args.seeds, shots=args.shots)
     plot_thermal_threshold(df_res)
     replay_real_hardware_p1()

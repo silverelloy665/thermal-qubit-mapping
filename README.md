@@ -110,6 +110,13 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 > - **Scope & Limits**: All hardware measurements were conducted on one backend (`ibm_marrakesh`), during one calibration day, with one fixed transpiled layout per cell across 2 repetitions of 8,192 shots (16,384 total pooled shots per cell). Consequently, confidence intervals quantify shot noise only.
 > - **Baseline Comparisons**: ESP significantly outperforms random qubit mapping by **+16.05%** on GHZ-5 ($90.28\%$ vs. $74.23\%$) and by **+23.73%** on Mirror-5 ($73.91\%$ vs. $50.18\%$). Compared against Qiskit L3, ESP yields -1.32 pts (GHZ), -4.85 pts (BV), -7.87 pts (QFT), and +4.41 pts (Mirror-5).
 
+### Methodological Limitations & Thermal Sensitivity Bounds
+
+- **Vigo $N=5$ has no layout freedom**: On `FakeVigoV2` (5 qubits total), mapping any 5-qubit benchmark requires utilizing the entire chip $\{0, 1, 2, 3, 4\}$; there is no subgraph freedom to route around hot spots regardless of injected thermal excess.
+- **10 seeds not 20**: The thermal sensitivity sweep evaluated 10 profile seeds per cell rather than 20 to operate within runtime budget constraints.
+- **Hot qubits forced into the default layout in $\ge 50\%$ of draws**: To test evasion efficacy, at least half of all random seed draws explicitly place at least one hot qubit inside the default plain-ESP layout.
+- **Threshold definition**: The pre-registered sensitivity threshold is the smallest $p_{1, \text{excess}}$ where the paired-gain 95% bootstrap CI lower bound is strictly $> 0$.
+- **Practical significance threshold**: Paired fidelity gains below 0.5 pt are marked "not practically meaningful".
 
 ---
 

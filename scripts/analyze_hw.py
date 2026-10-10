@@ -181,7 +181,7 @@ def analyze_hardware(raw_dir_str: str = "results/hardware/raw", output_csv_str: 
             'ci_95_high_pts': float(ci_high) * 100.0,
             'p_value_raw': p_val,
             'effect_size': std_effect,
-            'effect_type': "standardized_diff"
+            'effect_type': "standardized difference"
         })
         
     df_res = pd.DataFrame(records)
@@ -199,8 +199,26 @@ def analyze_hardware(raw_dir_str: str = "results/hardware/raw", output_csv_str: 
     
     # Pretty print summary table
     print("\nSUMMARY OF 16 HARDWARE COMPARISONS (ESP vs Baselines):")
-    fmt_df = df_res[['benchmark', 'comparison', 'diff_points', 'ci_95_low_pts', 'ci_95_high_pts', 'p_value_raw', 'p_value_holm', 'effect_size', 'effect_type']]
-    print(fmt_df.to_string(index=False, justify='center', float_format=lambda x: f"{x:10.4f}"))
+    disp_df = df_res[['benchmark', 'comparison', 'diff_points', 'ci_95_low_pts', 'ci_95_high_pts', 'p_value_raw', 'p_value_holm', 'effect_size', 'effect_type']].copy()
+    raw_str = []
+    holm_str = []
+    for _, row in disp_df.iterrows():
+        if row['benchmark'] == 'qft' and row['p_value_raw'] <= 1e-4:
+            raw_str.append("<1e-4")
+        else:
+            raw_str.append(f"{row['p_value_raw']:.4f}")
+        if row['benchmark'] == 'qft' and row['p_value_holm'] <= 1e-4:
+            holm_str.append("<1e-4")
+        else:
+            holm_str.append(f"{row['p_value_holm']:.4f}")
+    disp_df['p_value_raw'] = raw_str
+    disp_df['p_value_holm'] = holm_str
+    print(disp_df.to_string(index=False, justify='center', formatters={
+        'diff_points': lambda x: f"{x:10.4f}",
+        'ci_95_low_pts': lambda x: f"{x:10.4f}",
+        'ci_95_high_pts': lambda x: f"{x:10.4f}",
+        'effect_size': lambda x: f"{x:10.4f}"
+    }))
     print("=" * 80 + "\n")
     
     return df_res

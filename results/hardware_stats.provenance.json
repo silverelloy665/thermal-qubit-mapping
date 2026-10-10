@@ -1,9 +1,9 @@
 {
   "csv_file": "hardware_stats.csv",
   "csv_path": "D:\\dev\\thermal_qubit_mapping\\results\\hardware_stats.csv",
-  "generated_at": "2026-10-10T19:23:17.355846",
+  "generated_at": "2026-10-10T19:37:45.848860",
   "git": {
-    "commit": "cf0806651778",
+    "commit": "b88a228c20d6",
     "branch": "main",
     "dirty": true
   },
