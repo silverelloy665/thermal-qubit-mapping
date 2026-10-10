@@ -98,7 +98,7 @@ def simulate_with_mixture_compact(tc: QuantumCircuit, target, lay: list, true_ex
             
     return tot_counts
 
-def run_thermal_sweep(num_seeds: int = 10, shots: int = 8192, output_csv: str = "results/sim/thermal_sweep.csv", device_filter: str = None, max_cells: int = None) -> tuple[pd.DataFrame, dict]:
+def run_thermal_sweep(num_seeds: int = 10, shots: int = 8192, output_csv: str = "results/sim/thermal_sweep.csv", device_filter: str = None, max_cells: int = None, target_cell: tuple = None) -> tuple[pd.DataFrame, dict]:
     devices = {
         'fake_vigo': FakeVigoV2(),
         'fake_guadalupe': FakeGuadalupeV2()
@@ -147,8 +147,11 @@ def run_thermal_sweep(num_seeds: int = 10, shots: int = 8192, output_csv: str = 
             tc_esp_default, _, _, lay_esp_default, _ = mapper_esp(
                 qc, target, use_thermal=False, routing_seeds=1, max_candidate_layouts=30
             )
-            # Baseline L3 and L3_best3
-            tc_l3_default, _, _, lay_l3_default, _ = mapper_qiskit_default(qc, target, level=3)
+            # Baseline L3 and L3_best3 with deterministic transpiler and layout seeding
+            import random
+            random.seed(42)
+            np.random.seed(42)
+            tc_l3_default, _, _, lay_l3_default, _ = mapper_qiskit_default(qc, target, level=3, seed=42)
             tc_b3_default, _, _, lay_b3_default, _ = mapper_qiskit_best3(qc, target, level=3, routing_seeds=3)
             
             for k_hot in hot_count_grid:
@@ -159,6 +162,10 @@ def run_thermal_sweep(num_seeds: int = 10, shots: int = 8192, output_csv: str = 
                     if max_cells and cell_idx >= max_cells:
                         break
                     cell_idx += 1
+                    if target_cell is not None:
+                        t_dev, t_bench, t_hot, t_exc = target_cell
+                        if (dev_name != t_dev or b_name != t_bench or k_hot != t_hot or abs(excess_p1 - t_exc) > 1e-5):
+                            continue
                     cell_draws_changed = 0
                     paired_gains = []
                     paired_oracle_gains = []
@@ -442,6 +449,7 @@ if __name__ == "__main__":
     parser.add_argument("--seeds", type=int, default=10, help="Profile seeds per cell.")
     parser.add_argument("--shots", type=int, default=8192, help="Shots per simulation.")
     parser.add_argument("--output", default="results/sim/thermal_sweep.csv", help="Output CSV path.")
+    parser.add_argument("--target-cell", nargs=4, metavar=('DEVICE', 'BENCHMARK', 'HOT_COUNT', 'EXCESS_P1'), help="Run only a single cell (e.g. fake_guadalupe ghz 2 0.15)")
     parser.add_argument("--replay-only", action="store_true", help="Only run hardware replay check.")
     parser.add_argument("--summary-only", action="store_true", help="Print threshold summary from existing results.")
     args = parser.parse_args()
@@ -455,7 +463,11 @@ if __name__ == "__main__":
         print_threshold_summary(df_existing)
         sys.exit(0)
         
-    df_res, thresholds = run_thermal_sweep(num_seeds=args.seeds, shots=args.shots, output_csv=args.output)
+    t_cell = None
+    if args.target_cell:
+        t_cell = (args.target_cell[0], args.target_cell[1], int(args.target_cell[2]), float(args.target_cell[3]))
+
+    df_res, thresholds = run_thermal_sweep(num_seeds=args.seeds, shots=args.shots, output_csv=args.output, target_cell=t_cell)
     plot_thermal_threshold(df_res)
     replay_real_hardware_p1()
     print_threshold_summary(df_res)

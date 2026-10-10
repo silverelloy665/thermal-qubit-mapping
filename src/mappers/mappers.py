@@ -120,6 +120,8 @@ def mapper_random(circuit: QuantumCircuit, target: Target, num_draws: int = 50, 
 
 def mapper_qiskit_default(circuit: QuantumCircuit, target: Target, level: int, seed: int = 42) -> Tuple[QuantumCircuit, float, float, list, int]:
     start = time.time()
+    random.seed(seed)
+    np.random.seed(seed)
     tc = transpile(circuit, target=target, optimization_level=level, seed_transpiler=seed)
     esp = esp_standard(tc, target)
     lay = _get_layout(tc, circuit)
