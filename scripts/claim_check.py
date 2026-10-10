@@ -74,6 +74,28 @@ def audit_sweep_and_p1(readme_content: str, sweep_csv="results/sim/thermal_sweep
     if f"{point_gt_0_15} of {total_15} cells at 15% excess" not in readme_content:
         return False, f"Count '{point_gt_0_15} of {total_15} cells at 15% excess' not found in README."
 
+    # Drift robustness assertions (+/-0.09 pt worst-case drift)
+    drift_pt = 0.09
+    ci_lows_pts = g_hot['gain_vs_l3_ci_low'].values * 100.0
+    pos_ci = ci_lows_pts[ci_lows_pts > 0]
+    neg_ci = ci_lows_pts[ci_lows_pts <= 0]
+    margin_ci = float(min(pos_ci.min(), -neg_ci.max()))
+    for s in [-drift_pt, drift_pt]:
+        cnt_shifted = len(g_hot[(g_hot.gain_vs_l3_ci_low * 100.0 + s) > 0.0])
+        if cnt_shifted != ci_gt_0:
+            return False, f"1-of-72 count broken under drift {s:+.2f} pt: got {cnt_shifted}"
+    print(f"L3 drift robustness: 1-of-72 count invariant under +/-0.09 pt drift (smallest margin: {margin_ci:.4f} pt).")
+
+    means_15_pts = g_15['gain_vs_l3_mean'].values * 100.0
+    pos_m15 = means_15_pts[means_15_pts > 0]
+    neg_m15 = means_15_pts[means_15_pts <= 0]
+    margin_m15 = float(min(pos_m15.min(), -neg_m15.max()))
+    for s in [-drift_pt, drift_pt]:
+        cnt_shifted_15 = len(g_15[(g_15.gain_vs_l3_mean * 100.0 + s) > 0.0])
+        if cnt_shifted_15 != point_gt_0_15:
+            return False, f"6-of-12 count broken under drift {s:+.2f} pt: got {cnt_shifted_15}"
+    print(f"L3 drift robustness: 6-of-12 count invariant under +/-0.09 pt drift (smallest margin: {margin_m15:.4f} pt).")
+
     # 3. Verify real hardware p1 measurements
     p1_files = glob.glob(p1_pattern)
     if not p1_files:

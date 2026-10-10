@@ -1,0 +1,120 @@
+================================================================================
+IBM RUNTIME HARDWARE EXECUTION AUDIT: CHECKPOINT M
+Audit Timestamp: 2026-10-10T20:32:54.514363+00:00
+================================================================================
+
+SECTION 1: JOB IDS AND BACKEND CONSISTENCY
+--------------------------------------------------------------------------------
+Discovered Job IDs in results/hardware/ (Total: 3):
+  - Job ID: db3uv1cvf2bc73ctqt1g
+    Source:  runtime_table.csv (repetition 0, 24 circuits)
+    Backend: ibm_marrakesh
+    Status:  DONE
+  - Job ID: db3uvecvf2bc73ctqto0
+    Source:  runtime_table.csv (repetition 1, 24 circuits)
+    Backend: ibm_marrakesh
+    Status:  DONE
+  - Job ID: db3usd2mb58s7388dskg
+    Source:  p1_ibm_marrakesh_20261009T001839_0530.json (p1 characterization)
+    Backend: ibm_marrakesh
+    Status:  DONE
+
+Assertions:
+  [PASS] Backend pinned strictly to 'ibm_marrakesh' across plan, p1, and execution table.
+  [PASS] All jobs verified completed with status DONE.
+  [PASS] Zero cross-cell or duplicate job ID collisions.
+
+SECTION 2: QPU TIME ACCOUNTING
+--------------------------------------------------------------------------------
+  - Repetition 0 (db3uv1cvf2bc73ctqt1g): 51.0 s
+  - Repetition 1 (db3uvecvf2bc73ctqto0): 51.0 s
+  - Main Benchmarks Subtotal:    102.0 s
+  - Pilot Job (8192 shots):        3.0 s
+  - p1 Characterization Job:     Not recorded in metadata JSON
+  -------------------------------------------------------------
+  - Total Recorded QPU Usage:    105.0 s
+  - Plan Pre-Execution Estimate: 102.0 s
+  - Project Budget Cap:          350.0 s
+  - Total Allocation Allowance:  600.0 s (per 28-day cycle)
+
+Assertions:
+  [PASS] Total recorded QPU time (105.0 s) <= Project Cap (350.0 s).
+  [PASS] Main benchmark execution matches pre-execution plan estimate (102.0 s).
+
+SECTION 3: SHOTS AND SAMPLE SIZES
+--------------------------------------------------------------------------------
+  - Raw count files audited:    48 files
+  - Raw shot count target:      8,192 shots per file
+  - Raw shot mismatches:        0
+  - Pooled cells audited:       24 cells (4 benchmarks x 6 methods)
+  - Pooled shot count target:   16,384 shots per cell (8,192 x 2 repetitions)
+  - Pooled shot mismatches:     0
+
+Assertions:
+  [PASS] All 48 raw count files contain exactly 8,192 shots.
+  [PASS] All 24 pooled evaluation cells contain exactly 16,384 shots.
+
+SECTION 4: PLAN INTEGRITY & CALIBRATION METADATA
+--------------------------------------------------------------------------------
+  - Plan file:                  results/hardware/plan.json
+  - Plan SHA256:                3110cc453c261f74-4e172dbcae3fb90b-2cc3906f0e9ef437-8420b7602763b084
+  - Plan Backend:               ibm_marrakesh
+  - Plan Calibration Timestamp: 2026-10-09T00:18:39+05:30
+  - Table Calibration Timestamp:2026-10-09T00:18:39+05:30
+
+Assertions:
+  [PASS] Plan SHA256 recomputed and verified.
+  [PASS] Calibration timestamp is identical across plan and all 48 execution rows.
+
+SECTION 5: PILOT GATE TIMING VERIFICATION
+--------------------------------------------------------------------------------
+  - Pilot Execution Timestamp:    2026-10-08T19:24:49Z (2026-10-09T00:54:49+05:30 IST)
+  - Hardware Execution Timestamp: 2026-10-08T20:00:36Z (2026-10-09T01:30:36+05:30 IST)
+  - Elapsed Time Delta:           35m 47s (2147.42 s)
+
+Assertions:
+  [PASS] Pilot job completed strictly prior to main batch execution.
+  [PASS] Execution took place within the mandatory 24-hour pilot gate window (delta: 35m 47s < 24h).
+
+SECTION 6: RAW COUNTS <-> RUNTIME TABLE AGREEMENT
+--------------------------------------------------------------------------------
+  - Rows evaluated:                     48 rows
+  - Max absolute difference per row:    0.000000000000e+00
+  - Parameter cells evaluated:          24 cells
+  - Max absolute difference cell means: 0.000000000000e+00
+
+Assertions:
+  [PASS] All 48 row metric values match raw counts with difference < 1e-9 (exact bitstring agreement).
+  [PASS] All 24 cell mean metric values match raw counts with difference < 1e-9.
+
+SECTION 7: CREDENTIALS & SECRETS AUDIT
+--------------------------------------------------------------------------------
+  - Working tree check_secrets:       PASSED (0 exposed secrets / tokens)
+  - Working tree CRN matches:         0
+  - Git history CRN matches:          0
+  - Git history live token matches:   0
+  - Git history ibm_api_key matches:  0
+  - .env untracked by git:            True (Expected: True)
+  - .env present in .gitignore:       True (Expected: True)
+  - .env commits in git history:      0 (Expected: 0)
+  - Raw count JSON files with CRN:    0 (Expected: 0)
+
+Assertions:
+  [PASS] Zero tokens, API keys, or instance CRNs found in working tree.
+  [PASS] Zero tokens, API keys, or instance CRNs found in git log history across all branches.
+  [PASS] .env file is untracked, excluded via .gitignore, and has 0 commits in git history.
+  [PASS] All 48 raw JSON count files are devoid of instance CRN or credential metadata.
+
+SECTION 8: RAW COUNT MANIFEST & INTEGRITY BACKUP
+--------------------------------------------------------------------------------
+  - Manifest file written:      results/hardware/raw.sha256
+  - Raw files hashed:           48
+  - Total raw payload size:     16253 bytes
+
+Assertions:
+  [PASS] SHA-256 manifest generated for all 48 raw count files.
+  [PASS] Total raw payload verified (48 files, 16253 bytes).
+
+================================================================================
+END OF AUDIT: ALL 8 SECTIONS PASSED
+================================================================================
