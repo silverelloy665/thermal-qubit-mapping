@@ -9,48 +9,49 @@ Backend: ibm_marrakesh (156 qubits)
     Job ID: db3ur4slf4us73c1v5pg
     Note: taken from the IBM dashboard, verify full ID
     Timestamp: 12:52 AM
-    QPU Execution Time: 4 s (measured from dashboard)
+    QPU Execution Time: 4 s (manually transcribed from the IBM dashboard, 10 Oct 2026)
     Backend: ibm_marrakesh
     Status: DONE
 
 - p1 Characterization Job:
     Job ID: db3usd2mb58s7388dskg
     Timestamp: 12:55 AM
-    QPU Execution Time: 4 s (measured from dashboard)
+    QPU Execution Time: 4 s (manually transcribed from the IBM dashboard, 10 Oct 2026)
     Backend: ibm_marrakesh
     Status: DONE
 
 - Repetition 0 (Benchmark Run 1):
     Job ID: db3uv1cvf2bc73ctqt1g
     Circuits: 17 circuits per job (24 table rows share circuits)
-    QPU Execution Time: 39 s (measured from dashboard)
+    QPU Execution Time: 39 s (manually transcribed from the IBM dashboard, 10 Oct 2026)
     Backend: ibm_marrakesh
     Status: DONE
 
 - Repetition 1 (Benchmark Run 2):
     Job ID: db3uvecvf2bc73ctqto0
     Circuits: 17 circuits per job (24 table rows share circuits)
-    QPU Execution Time: 39 s (measured from dashboard)
+    QPU Execution Time: 39 s (manually transcribed from the IBM dashboard, 10 Oct 2026)
     Backend: ibm_marrakesh
     Status: DONE
 
 
 2. QPU-TIME SECTION
 --------------------------------------------------------------------------------
-- Measured Execution Times (From IBM Dashboard Only):
+- Measured Execution Times (manually transcribed from the IBM dashboard, 10 Oct 2026):
     * Repetition 0:                              39 s
     * Repetition 1:                              39 s
-    * Main Benchmark Jobs Measured Total:        78 s (39+39 = 78 s main)
-    * Pilot Calibration Job:                      4 s
-    * p1 Characterization Job:                    4 s
-    * Measured Total (with pilot and p1):        86 s (86 s with pilot and p1, 24% under estimate)
+    * Main Benchmark Jobs Measured Total:        78 s (39 s + 39 s)
+    * Pilot Calibration Job:                      4 s (outside the plan)
+    * p1 Characterization Job:                    4 s (outside the plan)
+    * Pilot + p1 Subtotal:                        8 s, outside the plan
+    * Four Project Jobs Total:                   86 s (project total 86 s)
     * Cumulative Dashboard Usage:               321 s of 600 s (28-day allocation allowance)
 
 - Planning vs Measurement Accounting:
     * Planned Run Estimate per job:              51.0 s planned estimate (17 x 3.0 s), not a measurement
     * Planned Main Benchmark Total:             102.0 s (2 x 51.0 s)
     * Table run_seconds Field:                   relabelled as planned estimate (17 x 3.0 s), not a measurement
-    * Variance vs Planned Estimate:              24% under estimate (78 s measured main vs 102.0 s planned)
+    * Variance vs Planned Estimate:              main 78 s vs 102 s planned = 24% under; pilot + p1 = 8 s, outside the plan; project total 86 s.
     * Project Budget Cap:                        350.0 s
     * 28-day Open Plan Allowance:                600.0 s
     * Verification: Four project jobs on dashboard (86 s) <= Project Cap (350.0 s) [PASS]
