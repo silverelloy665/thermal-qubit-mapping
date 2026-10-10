@@ -116,12 +116,12 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 - **Baseline Comparative Performance vs Qiskit L3**:
   - At zero excess, ESP trails L3 by 8.0, 2.7, 7.5, and 8.8 pts (GHZ, BV, QFT, Mirror) on `FakeGuadalupeV2`.
   - In non-zero thermal excess regimes, thermal ESP beats L3 with a 95% bootstrap CI strictly greater than zero in only **1 of 72 hot cells** (GHZ-5, 2 hot qubits, $15\%$ excess: $+5.28\text{ pts}$, 95% CI $[+0.35, +9.81]$). By point estimate, thermal ESP beats L3 in **6 of 12 cells at 15% excess** (GHZ with 1, 2, 3 hot qubits; BV with 2, 3 hot qubits; QFT with 3 hot qubits); Mirror-5 never beats L3 across any parameter cell.
-- **Physical Prevalence of High-Thermal Regimes**: On `ibm_marrakesh`, only **4 of 156 qubits** exhibit $p_{1, \text{excess}} > 0.10$ (qubits 125, 22, 26, 11), with qubit 125 flagged as readout failure ($\epsilon_{\text{ro}} = 0.547$). Consequently, regimes where thermal ESP provides definitive routing advantages over L3 are physically rare.
-- **Guadalupe Practical Detection Thresholds**: On the 16-qubit `FakeGuadalupeV2` model, thermal ESP achieves practical sensitivity ($\text{gain} \ge 0.5\text{ pt}$ and 95% bootstrap CI lower bound $> 0$) at:
-  - **GHZ-5**: $p_{1, \text{excess}} = 0.005$ across 1, 2, and 3 hot qubits.
-  - **BV-5**: $p_{1, \text{excess}} = 0.020$ (1 hot qubit), $0.050$ (2 hot qubits), and $0.005$ (3 hot qubits).
-  - **QFT-5**: $p_{1, \text{excess}} = 0.005$ (1 hot qubit) and $0.010$ (2 and 3 hot qubits).
-  - **Mirror-5**: $p_{1, \text{excess}} = 0.020$ (1 and 3 hot qubits) and $0.100$ (2 hot qubits).
+- **Physical Prevalence of High-Thermal Regimes**: On `ibm_marrakesh`, only **4 of 156 qubits** exhibit $p_{1, \text{excess}} > 0.10$ (qubits 125, 22, 26, 11); qubit 125 has readout error 0.0096 and excess 0.41 (thermal excess), whereas the readout-failure qubits ($\epsilon_{\text{ro}} > 0.20$) are 94 and 130. Consequently, regimes where thermal ESP provides definitive routing advantages over L3 are physically rare.
+- **Guadalupe Practical Detection First Crossings**: On the 16-qubit `FakeGuadalupeV2` model, thermal ESP achieves practical sensitivity ($\text{gain} \ge 0.5\text{ pt}$ and 95% bootstrap CI lower bound $> 0$) at first crossing:
+  - **GHZ-5**: $p_{1, \text{excess}} = 0.005$ across 1, 2, and 3 hot qubits (+1.26 pts, +2.40 pts, +1.82 pts).
+  - **BV-5**: $p_{1, \text{excess}} = 0.020$ (1 hot qubit, +1.50 pts), $0.050$ (2 hot qubits, +1.91 pts), and $0.005$ (3 hot qubits, +0.57 pts).
+  - **QFT-5**: $p_{1, \text{excess}} = 0.005$ (1 hot qubit, +2.38 pts) and $0.010$ (2 and 3 hot qubits, +2.36 pts, +1.56 pts).
+  - **Mirror-5**: $p_{1, \text{excess}} = 0.020$ (1 and 3 hot qubits, +1.31 pts, +2.30 pts) and $0.100$ (2 hot qubits, +2.51 pts). Note that Mirror-5 (3 hot) loses the effect again at 0.05 (gain -0.12 pts with CI overlapping zero).
 - **Vigo Topologically Uninformative**: On `FakeVigoV2` (5 qubits total), mapping $N=5$ benchmarks provides **no layout freedom**—all 5 qubits $\{0, 1, 2, 3, 4\}$ must be chosen, yielding identical layouts and exactly 0.00 gain across all noise profiles.
 - **Mirror Benchmark Sensitivity Noise**: Due to deep multi-layer compilation variance, Mirror-5 exhibits high sensitivity noise; its 95% bootstrap confidence intervals overlap zero below $\sim 10\%$ excess population for 2 hot qubits.
 - **Circularity Caveat**: The Aer noise simulator injects non-equilibrium populations via state-preparation bit-flip mixtures ($X$ with probability $p_{1, \text{excess}}$), which directly aligns with the penalization objective optimized by Thermal ESP.
@@ -131,7 +131,7 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 - **Vigo $N=5$ has no layout freedom**: On `FakeVigoV2` (5 qubits total), mapping any 5-qubit benchmark requires utilizing the entire chip $\{0, 1, 2, 3, 4\}$; there is no subgraph freedom to route around hot spots regardless of injected thermal excess.
 - **10 seeds not 20**: The thermal sensitivity sweep evaluated 10 profile seeds per cell rather than 20 to operate within runtime budget constraints.
 - **Hot qubits forced into the default layout in $\ge 50\%$ of draws**: To test evasion efficacy, at least half of all random seed draws explicitly place at least one hot qubit inside the default plain-ESP layout.
-- **Threshold definition**: The pre-registered sensitivity threshold is the smallest $p_{1, \text{excess}}$ where the paired-gain 95% bootstrap CI lower bound is strictly $> 0$.
+- **First crossing definition**: The pre-registered sensitivity first crossing is the smallest $p_{1, \text{excess}}$ where the paired-gain 95% bootstrap CI lower bound is strictly $> 0$.
 - **Practical significance threshold**: Paired fidelity gains below 0.5 pt are marked "not practically meaningful".
 
 ---
