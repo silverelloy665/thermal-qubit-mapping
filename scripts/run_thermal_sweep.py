@@ -241,6 +241,9 @@ def run_thermal_sweep(num_seeds: int = 10, shots: int = 8192) -> tuple[pd.DataFr
                         _, score_l3 = compute_outcome_metric(b_name, cnt_l3, qc, shots=shots)
                         _, score_b3 = compute_outcome_metric(b_name, cnt_b3, qc, shots=shots)
                         
+                        scores_no.append(score_no)
+                        scores_th.append(score_th)
+                        scores_l3.append(score_l3)
                         paired_gains.append(score_th - score_no)
                         paired_oracle_gains.append(score_oracle - score_no)
                         gains_vs_l3.append(score_th - score_l3)
@@ -262,7 +265,10 @@ def run_thermal_sweep(num_seeds: int = 10, shots: int = 8192) -> tuple[pd.DataFr
                         'oracle_gain_mean': mean_oracle,
                         'gain_vs_l3_mean': mean_vs_l3,
                         'gain_vs_l3_ci_low': l3_low,
-                        'gain_vs_l3_ci_high': l3_high
+                        'gain_vs_l3_ci_high': l3_high,
+                        'mean_score_l3': float(np.mean(scores_l3)),
+                        'mean_score_esp_no': float(np.mean(scores_no)),
+                        'mean_score_esp_th': float(np.mean(scores_th))
                     })
                     
                     print(f"[{cell_idx}/{total_cells}] {dev_name:<14} | {b_name:<6} | hot={k_hot} | excess={excess_p1:5.3f} => changed: {change_frac:.2f} | gain: {mean_gain:+.4f} [{ci_low:+.4f}, {ci_high:+.4f}]")
@@ -383,23 +389,51 @@ def replay_real_hardware_p1():
         print(f"  {b:7s} {m:16s} | layout={lay} | hot_qubits_in_layout={hot_in_lay} | has_qubit_11={has_11}")
     print("=" * 80 + "\n")
 
+def print_threshold_summary(df_sweep: pd.DataFrame):
+    print("\n" + "=" * 80)
+    print("SWEEP THRESHOLD SUMMARY (Statistical vs Practical Thresholds):")
+    print("=" * 80)
+    summary_rows = []
+    bench_names = ['ghz', 'bv', 'qft', 'mirror']
+    for dev_name in df_sweep['device'].unique():
+        for b_name in bench_names:
+            for k in [1, 2, 3]:
+                sub = df_sweep[(df_sweep['device'] == dev_name) & (df_sweep['benchmark'] == b_name) & (df_sweep['hot_qubit_count'] == k)]
+                if sub.empty:
+                    continue
+                stat_rows = sub[sub['paired_gain_ci_low'] > 0.0]
+                stat_th = f"{stat_rows['excess_p1'].min():.3f}" if not stat_rows.empty else "none found"
+                prac_rows = sub[(sub['paired_gain_mean'] >= 0.005) & (sub['paired_gain_ci_low'] > 0.0)]
+                prac_th = f"{prac_rows['excess_p1'].min():.3f}" if not prac_rows.empty else "none found"
+                summary_rows.append({
+                    'device': dev_name,
+                    'benchmark': b_name,
+                    'hot_qubits': k,
+                    'statistical_threshold': stat_th,
+                    'practical_threshold': prac_th
+                })
+    sum_df = pd.DataFrame(summary_rows)
+    print(sum_df.to_string(index=False, justify='center'))
+    print("=" * 80 + "\n")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run thermal-gradient sensitivity sweep.")
     parser.add_argument("--seeds", type=int, default=10, help="Profile seeds per cell.")
     parser.add_argument("--shots", type=int, default=8192, help="Shots per simulation.")
     parser.add_argument("--replay-only", action="store_true", help="Only run hardware replay check.")
+    parser.add_argument("--summary-only", action="store_true", help="Print threshold summary from existing results.")
     args = parser.parse_args()
     
     if args.replay_only:
         replay_real_hardware_p1()
         sys.exit(0)
+
+    if args.summary_only:
+        df_existing = pd.read_csv("results/sim/thermal_sweep.csv")
+        print_threshold_summary(df_existing)
+        sys.exit(0)
         
     df_res, thresholds = run_thermal_sweep(num_seeds=args.seeds, shots=args.shots)
     plot_thermal_threshold(df_res)
     replay_real_hardware_p1()
-    
-    print("SWEEP THRESHOLD SUMMARY:")
-    for dev, b_dict in thresholds.items():
-        print(f"Device {dev}:")
-        for b, thresh in b_dict.items():
-            print(f"  - {b}: {thresh}")
+    print_threshold_summary(df_res)

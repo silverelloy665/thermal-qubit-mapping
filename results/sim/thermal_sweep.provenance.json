@@ -1,9 +1,9 @@
 {
   "csv_file": "thermal_sweep.csv",
   "csv_path": "D:\\dev\\thermal_qubit_mapping\\results\\sim\\thermal_sweep.csv",
-  "generated_at": "2026-10-10T19:22:45.046688",
+  "generated_at": "2026-10-10T20:02:14.827158",
   "git": {
-    "commit": "cf0806651778",
+    "commit": "a9052602e037",
     "branch": "main",
     "dirty": true
   },
@@ -18,7 +18,7 @@
   },
   "summary": {
     "row_count": 168,
-    "column_count": 12,
+    "column_count": 15,
     "columns": [
       "device",
       "benchmark",
@@ -31,7 +31,10 @@
       "oracle_gain_mean",
       "gain_vs_l3_mean",
       "gain_vs_l3_ci_low",
-      "gain_vs_l3_ci_high"
+      "gain_vs_l3_ci_high",
+      "mean_score_l3",
+      "mean_score_esp_no",
+      "mean_score_esp_th"
     ]
   }
 }

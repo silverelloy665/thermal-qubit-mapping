@@ -106,9 +106,21 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 
 > [!NOTE]
 > **Experimental Setup & Equivalence Notes**:
-> - **Shared circuit => thermal == ESP by construction**: On `ibm_marrakesh`, thermal ESP and standard ESP selected the exact same physical layouts (`shared_circuit=True`) because measured $P(1|0)$ across the chosen active qubits fell below the calibrated readout error $\epsilon_{\text{ro}}$ ($p_{1, \text{excess}} = 0$). This identity is by construction of the de-duplicated circuit pipeline and does not represent independent empirical convergence.
+> - **Shared circuit => thermal == ESP by construction**: On `ibm_marrakesh`, thermal ESP and standard ESP selected the exact same physical layouts (`shared_circuit=True`) because measured $P(1|0)$ across the chosen active qubits remained near or below calibrated readout error $\epsilon_{\text{ro}}$ (excess $<0.02$ on all chosen qubits; e.g., mirror layout includes qubit 54 with excess 0.012). This identity is by construction of the de-duplicated circuit pipeline and does not represent independent empirical convergence.
+> - **Heron r2 Native CZ Architecture**: `ibm_marrakesh` natively executes Controlled-Z (CZ) two-qubit operations, compiling GHZ-5 into exactly 4 CZ gates at minimal circuit depth 16.
 > - **Scope & Limits**: All hardware measurements were conducted on one backend (`ibm_marrakesh`), during one calibration day, with one fixed transpiled layout per cell across 2 repetitions of 8,192 shots (16,384 total pooled shots per cell). Consequently, confidence intervals quantify shot noise only.
 > - **Baseline Comparisons**: ESP significantly outperforms random qubit mapping by **+16.05%** on GHZ-5 ($90.28\%$ vs. $74.23\%$) and by **+23.73%** on Mirror-5 ($73.91\%$ vs. $50.18\%$). Compared against Qiskit L3, ESP yields -1.32 pts (GHZ), -4.85 pts (BV), -7.87 pts (QFT), and +4.41 pts (Mirror-5).
+
+### Thermal-Gradient Sensitivity Sweep Results (`results/sim/thermal_sweep.csv`)
+
+- **Guadalupe Practical Detection Thresholds**: On the 16-qubit `FakeGuadalupeV2` model, thermal ESP achieves practical sensitivity ($\text{gain} \ge 0.5\text{ pt}$ and 95% bootstrap CI lower bound $> 0$) at:
+  - **GHZ-5**: $p_{1, \text{excess}} = 0.005$ across 1, 2, and 3 hot qubits.
+  - **BV-5**: $p_{1, \text{excess}} = 0.020$ (1 hot qubit), $0.050$ (2 hot qubits), and $0.005$ (3 hot qubits).
+  - **QFT-5**: $p_{1, \text{excess}} = 0.005$ (1 hot qubit) and $0.010$ (2 and 3 hot qubits).
+  - **Mirror-5**: $p_{1, \text{excess}} = 0.020$ (1 and 3 hot qubits) and $0.100$ (2 hot qubits).
+- **Vigo Topologically Uninformative**: On `FakeVigoV2` (5 qubits total), mapping $N=5$ benchmarks provides **no layout freedom**—all 5 qubits $\{0, 1, 2, 3, 4\}$ must be chosen, yielding identical layouts and exactly 0.00 gain across all noise profiles.
+- **Mirror Benchmark Sensitivity Noise**: Due to deep multi-layer compilation variance, Mirror-5 exhibits high sensitivity noise; its 95% bootstrap confidence intervals overlap zero below $\sim 10\%$ excess population for 2 hot qubits.
+- **Circularity Caveat**: The Aer noise simulator injects non-equilibrium populations via state-preparation bit-flip mixtures ($X$ with probability $p_{1, \text{excess}}$), which directly aligns with the penalization objective optimized by Thermal ESP.
 
 ### Methodological Limitations & Thermal Sensitivity Bounds
 
