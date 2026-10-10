@@ -1,6 +1,6 @@
 ================================================================================
 IBM RUNTIME HARDWARE EXECUTION AUDIT: CHECKPOINT M
-Audit Timestamp: 2026-10-10T20:43:53.229666+00:00
+Audit Timestamp: 2026-10-10T20:50:52.169618+00:00
 ================================================================================
 
 SECTION 1: JOB IDS AND BACKEND CONSISTENCY
@@ -16,11 +16,11 @@ Discovered Job IDs in results/hardware/ (Total: 4):
     Backend: ibm_marrakesh
     Status:  DONE
   - Job ID: db3uv1cvf2bc73ctqt1g
-    Source:  runtime_table.csv (repetition 0, 24 circuits, 39s)
+    Source:  runtime_table.csv (repetition 0, 17 circuits per job (24 table rows share circuits), 39s measured)
     Backend: ibm_marrakesh
     Status:  DONE
   - Job ID: db3uvecvf2bc73ctqto0
-    Source:  runtime_table.csv (repetition 1, 24 circuits, 39s)
+    Source:  runtime_table.csv (repetition 1, 17 circuits per job (24 table rows share circuits), 39s measured)
     Backend: ibm_marrakesh
     Status:  DONE
 
@@ -31,30 +31,25 @@ Assertions:
 
 SECTION 2: QPU TIME ACCOUNTING
 --------------------------------------------------------------------------------
-  IBM Quantum Platform Dashboard Totals:
-  - Total Dashboard Usage:       321 s of 600 s (28-day allocation allowance)
-  - Four Project Jobs Total:     86 s
-      * Pilot (db3ur4slf4us73c1v5pg):   4 s (12:52 AM, taken from the IBM dashboard, verify full ID)
-      * p1 (db3usd2mb58s7388dskg):            4 s (12:55 AM)
-      * Repetition 0 (db3uv1cvf2bc73ctqt1g): 39 s
-      * Repetition 1 (db3uvecvf2bc73ctqto0): 39 s
+  Measured Execution Times (IBM Dashboard Only):
+  - Repetition 0 (db3uv1cvf2bc73ctqt1g):         39 s
+  - Repetition 1 (db3uvecvf2bc73ctqto0):         39 s
+  - Main Benchmark Jobs Measured Total:        78 s (39+39 = 78 s main)
+  - Pilot Calibration Job (db3ur4slf4us73c1v5pg): 4 s (12:52 AM, taken from the IBM dashboard, verify full ID)
+  - p1 Characterization Job (db3usd2mb58s7388dskg):  4 s (12:55 AM)
+  - Measured Total (with pilot and p1):        86 s (86 s with pilot and p1, 24% under estimate)
+  - Cumulative Dashboard Usage:                321 s of 600 s (28-day allocation allowance)
 
-  Client-Side / Table Measurement Comparison:
-  - Repetition 0 (db3uv1cvf2bc73ctqt1g): 51.0 s
-  - Repetition 1 (db3uvecvf2bc73ctqto0): 51.0 s
-  - Main Benchmarks Subtotal:    102.0 s
-  - Pilot Job (8192 shots):        3.0 s
-  - p1 Characterization Job:     Not recorded in metadata JSON (dashboard: 4 s)
-  -------------------------------------------------------------
-  - Total Recorded Client Usage: 105.0 s
-  - Plan Pre-Execution Estimate: 102.0 s
-  - Project Budget Cap:          350.0 s
+  Planning vs Measurement Accounting:
+  - Table run_seconds Field:                   51.0 s planned estimate (17 x 3.0 s), not a measurement
+  - Plan Pre-Execution Main Estimate:          102.0 s (102.0 s planned estimate)
+  - Variance vs Planned Estimate:              24% under estimate (78 s measured main vs 102.0 s planned)
+  - Project Budget Cap:                        350.0 s
 
 Assertions:
-  [PASS] Four project jobs on dashboard (86 s) <= Project Cap (350.0 s).
-  [PASS] Dashboard cumulative usage (321 s) <= Total allowance (600 s).
-  [PASS] Total recorded client QPU time (105.0 s) <= Project Cap (350.0 s).
-  [PASS] Main benchmark execution matches pre-execution plan estimate (102.0 s).
+  [PASS] Measured QPU time across four project jobs (86 s) <= Project Cap (350.0 s).
+  [PASS] Measured QPU time (78 s main, 86 s with pilot and p1) is 24% under planned estimate (102.0 s).
+  [PASS] Cumulative dashboard usage (321 s) <= Total allowance (600 s).
 
 SECTION 3: SHOTS AND SAMPLE SIZES
 --------------------------------------------------------------------------------
@@ -109,6 +104,11 @@ SECTION 7: CREDENTIALS & SECRETS AUDIT
   - Git history CRN matches:          0
   - Git history live token matches:   0
   - Git history ibm_api_key matches:  0
+  - Working tree 'Bearer ' matches:   0
+  - Git history 'Bearer ' matches:    0
+  - Working tree 'IBM_QUANTUM':       0
+  - Git history 'IBM_QUANTUM':        0
+  - High-entropy tokens (H > 3.0):    0
   - .env untracked by git:            True (Expected: True)
   - .env present in .gitignore:       True (Expected: True)
   - .env commits in git history:      0 (Expected: 0)
@@ -117,6 +117,9 @@ SECTION 7: CREDENTIALS & SECRETS AUDIT
 Assertions:
   [PASS] Zero tokens, API keys, or instance CRNs found in working tree.
   [PASS] Zero tokens, API keys, or instance CRNs found in git log history across all branches.
+  [PASS] Zero 'Bearer ' authorization tokens found in working tree or git history.
+  [PASS] Zero 'IBM_QUANTUM' credential references found in working tree or git history.
+  [PASS] Zero high-entropy tokens found across repository text files.
   [PASS] .env file is untracked, excluded via .gitignore, and has 0 commits in git history.
   [PASS] All 48 raw JSON count files are devoid of instance CRN or credential metadata.
 
