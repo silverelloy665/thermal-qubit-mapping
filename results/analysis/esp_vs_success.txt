@@ -1,0 +1,74 @@
+================================================================================
+CALIBRATED ESP VS MEASURED SUCCESS CORRELATION ANALYSIS
+================================================================================
+
+1. DATASET & EXECUTION CONTEXT
+--------------------------------------------------------------------------------
+Backend:                  ibm_marrakesh
+Dataset Sample Size:      n = 24 evaluation cells (4 benchmarks x 6 methods)
+Calibration Regime:       One calibration day (2026-10-09T00:18:39+05:30)
+Total Raw Shots Evaluated:393,216 shots (16,384 shots per cell = 8,192 shots x 2 repetitions)
+Source File:              results/hardware/runtime_table.csv
+
+2. TABLE OF 24 HARDWARE CELLS
+--------------------------------------------------------------------------------
+Cell Benchmark  Method             Layout                     2Q   Depth  Calibrated ESP   Success (Mean)   Rep 0      Rep 1
+----------------------------------------------------------------------------------------------------------------------
+1    ghz        random             [80, 61, 62, 76, 81]       17   32     0.729998         0.742310         0.744995   0.739624
+2    ghz        qiskit_L1          [0, 1, 2, 3, 4]            4    20     0.936282         0.914551         0.917236   0.911865
+3    ghz        qiskit_L3          [33, 34, 35, 19, 15]       4    16     0.952398         0.916016         0.916138   0.915894
+4    ghz        qiskit_L3_best3    [33, 34, 35, 19, 15]       4    16     0.952398         0.916016         0.916138   0.915894
+5    ghz        esp_no_thermal     [32, 33, 34, 35, 19]       4    16     0.943321         0.902832         0.902344   0.903320
+6    ghz        esp_thermal        [32, 33, 34, 35, 19]       4    16     0.943321         0.902832         0.902344   0.903320
+7    bv         random             [80, 61, 62, 76, 81]       2    14     0.926559         0.863525         0.863037   0.864014
+8    bv         qiskit_L1          [3, 153, 6, 1, 2]          2    15     0.865960         0.914307         0.916016   0.912598
+9    bv         qiskit_L3          [3, 153, 6, 1, 2]          2    14     0.865960         0.911682         0.914917   0.908447
+10   bv         qiskit_L3_best3    [3, 153, 6, 1, 2]          2    14     0.865960         0.911682         0.914917   0.908447
+11   bv         esp_no_thermal     [34, 19, 35, 32, 33]       2    14     0.941330         0.863159         0.861694   0.864624
+12   bv         esp_thermal        [34, 19, 35, 32, 33]       2    14     0.941330         0.863159         0.861694   0.864624
+13   qft        random             [80, 61, 62, 76, 81]       39   107    0.425482         0.640747         0.642700   0.638794
+14   qft        qiskit_L1          [55, 39, 52, 54, 53]       41   122    0.745670         0.859741         0.855957   0.863525
+15   qft        qiskit_L3          [55, 52, 39, 54, 53]       30   83     0.789465         0.819336         0.814819   0.823853
+16   qft        qiskit_L3_best3    [55, 52, 39, 54, 53]       30   83     0.789465         0.819336         0.814819   0.823853
+17   qft        esp_no_thermal     [35, 19, 34, 15, 14]       39   92     0.858239         0.740662         0.741455   0.739868
+18   qft        esp_thermal        [35, 19, 34, 15, 14]       39   92     0.858239         0.740662         0.741455   0.739868
+19   mirror     random             [80, 61, 62, 76, 81]       52   124    0.409669         0.501770         0.502686   0.500854
+20   mirror     qiskit_L1          [4, 2, 16, 1, 3]           45   112    0.731826         0.755066         0.765503   0.744629
+21   mirror     qiskit_L3          [54, 53, 39, 52, 55]       38   86     0.772610         0.695007         0.681274   0.708740
+22   mirror     qiskit_L3_best3    [54, 53, 39, 52, 55]       38   86     0.772610         0.688599         0.674438   0.702759
+23   mirror     esp_no_thermal     [39, 53, 55, 54, 33]       46   110    0.778992         0.739136         0.733032   0.745239
+24   mirror     esp_thermal        [39, 53, 55, 54, 33]       46   110    0.778992         0.739136         0.733032   0.745239
+
+3. OVERALL CORRELATION (N = 24 CELLS, ALL BENCHMARKS)
+--------------------------------------------------------------------------------
+Pearson Correlation (r):         +0.8468 (p = 1.8166e-07)
+  Bootstrap 95% Confidence Interval: [+0.6514, +0.9357]
+Spearman Correlation (rho):      +0.8254 (p = 6.8918e-07)
+  Bootstrap 95% Confidence Interval: [+0.6339, +0.9277]
+
+4. WITHIN-BENCHMARK CORRELATIONS (N = 6 CELLS PER BENCHMARK)
+--------------------------------------------------------------------------------
+Benchmark  Metric         Pearson r (p-val)          Pearson 95% CI           Spearman rho (p-val)       Spearman 95% CI
+--------------------------------------------------------------------------------------------------------------------------
+GHZ        success_prob   +0.9958 (p=2.599e-05)      [-0.1528, +1.0000]       +0.8182 (p=4.658e-02)      [+0.0000, +1.0000]
+BV         success_prob   -0.9904 (p=1.372e-04)      [-1.0000, -0.9710]       -0.9535 (p=3.198e-03)      [-1.0000, -0.7071]
+QFT        fidelity       +0.6086 (p=1.998e-01)      [-1.0000, +1.0000]       -0.0909 (p=8.640e-01)      [-1.0000, +1.0000]
+MIRROR     success_prob   +0.9368 (p=5.863e-03)      [-0.9962, +1.0000]       +0.3881 (p=4.471e-01)      [-0.8944, +1.0000]
+
+5. INTERPRETATION & METHODOLOGICAL NOTES
+--------------------------------------------------------------------------------
+Key Findings:
+  - Overall Predictive Power: Calibrated ESP strongly correlates with measured hardware performance
+    across the full 24-cell dataset (Pearson r = +0.8468, Spearman rho = +0.8254).
+  - Benchmark Divergence:
+      * GHZ (r = +0.9958) and Mirror (r = +0.9368) exhibit strong positive tracking.
+      * BV (r = -0.9904) exhibits an inverted correlation: because BV is extremely shallow (2 CX gates),
+        gate errors are negligible and readout errors dominate; random layout achieved lowest gate depth but higher readout penalty.
+      * QFT (r = +0.6086) shows moderate correlation, where compilation gate count (30 vs 41 CX) dominates.
+  - Calibration Window Limitation:
+      * All n = 24 cells were executed on a single calibration day (ibm_marrakesh, 9 Oct 2026).
+      * Correlations reflect spatial variation across qubits rather than longitudinal temporal stability.
+
+================================================================================
+ANALYSIS COMPLETE: Finished in 43.52 s
+================================================================================

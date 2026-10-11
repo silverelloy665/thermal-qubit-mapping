@@ -1,0 +1,81 @@
+================================================================================
+PRE-FILTER SUBGRAPH RANKING & FINAL LAYOUT SENSITIVITY CHECK
+================================================================================
+
+1. EXECUTION METHODOLOGY
+--------------------------------------------------------------------------------
+Backend:                  ibm_marrakesh (156 qubits, heavy-hex)
+Source p1 Calibration:    p1_ibm_marrakesh_20261009T001839_0530.json (2026-10-09T00:18:39+05:30)
+Constraint Verification:  src/ was strictly preserved UNCHANGED.
+Scoring Methods Compared:
+  (A) Raw P(1) Scoring:    Original rank_subgraphs from src/mappers/mappers.py
+                           Penalty per qubit: (1 - p1)^2 using unadjusted P(1).
+  (B) Excess-Over-Readout: Re-implemented locally inside scripts/prefilter_check.py
+                           Penalty per qubit: (1 - max(0, p1 - readout_error))^2.
+
+2. TOP-50 PRE-FILTER CANDIDATE SET COMPARISON
+--------------------------------------------------------------------------------
+Total 5-Qubit Connected Subgraphs Enumerated: 566 (in 0.03 s)
+Top-50 Subgraphs in Common:                   38 / 50 (76.0%)
+Top-50 Subgraphs Differing:                   12 / 50 (24.0%)
+Jaccard Similarity Index:                     0.6129
+
+Subgraphs in Raw P(1) Top-50 ONLY (excluded under excess-over-readout):
+  - [0, 1, 2, 3, 4]
+  - [1, 2, 3, 4, 16]
+  - [2, 3, 4, 5, 6]
+  - [3, 4, 5, 6, 7]
+  - [6, 7, 8, 9, 17]
+  - [12, 13, 14, 15, 19]
+  - [13, 14, 15, 19, 35]
+  - [41, 42, 43, 44, 45]
+  - [42, 43, 44, 45, 56]
+  - [43, 44, 45, 46, 47]
+  - [43, 44, 45, 46, 56]
+  - [118, 126, 127, 128, 129]
+
+Subgraphs in Excess-Over-Readout Top-50 ONLY (promoted into pre-filter):
+  - [36, 41, 42, 43, 44]
+  - [41, 42, 43, 56, 63]
+  - [42, 43, 44, 56, 63]
+  - [43, 44, 56, 63, 64]
+  - [43, 56, 63, 64, 65]
+  - [64, 65, 66, 67, 77]
+  - [64, 65, 66, 77, 85]
+  - [65, 66, 67, 68, 77]
+  - [65, 66, 77, 84, 85]
+  - [77, 84, 85, 86, 87]
+  - [77, 85, 86, 87, 97]
+  - [84, 85, 86, 87, 97]
+
+3. FINAL ESP LAYOUT SENSITIVITY (4 HARDWARE BENCHMARKS)
+--------------------------------------------------------------------------------
+We test whether feeding the differing top-50 pre-filter candidate pools into the
+SABRE layout search (200 candidates, 3 routing seeds, opt_level=3) changes the final layout.
+
+Benchmark  Eval Mode    Raw P(1) Layout            Excess Layout              Layout Diff?   ESP (Raw / Excess)
+-------------------------------------------------------------------------------------------------------------------
+GHZ        Thermal      [32, 33, 34, 35, 19]       [52, 53, 39, 33, 34]       True           0.937343 / 0.939172
+GHZ        Standard     [9, 10, 8, 7, 6]           [5, 6, 7, 8, 9]            True           0.955167 / 0.958943
+BV         Thermal      [34, 39, 53, 32, 33]       [19, 33, 39, 34, 35]       True           0.940649 / 0.944216
+BV         Standard     [7, 9, 5, 8, 6]            [7, 5, 6, 9, 8]            True           0.953434 / 0.959211
+QFT        Thermal      [53, 35, 39, 34, 33]       [39, 33, 53, 34, 35]       True           0.840475 / 0.829029
+QFT        Standard     [53, 35, 39, 34, 33]       [35, 19, 34, 15, 14]       True           0.847490 / 0.858239
+MIRROR     Thermal      [33, 39, 35, 34, 53]       [34, 39, 53, 33, 35]       True           0.811550 / 0.818631
+MIRROR     Standard     [13, 14, 19, 15, 12]       [8, 6, 5, 7, 9]            True           0.830773 / 0.826469
+
+4. SUMMARY & REPORT FINDINGS
+--------------------------------------------------------------------------------
+Findings:
+  1. Top-50 Pre-Filter Sensitivity: YES, the top-50 candidate set DIFFERS.
+     - 38 of 50 subgraphs (76.0%) are shared; 12 subgraphs (24.0%) differ.
+     - Quench effect: Qubits with high raw readout error but negligible excess thermal population
+       are penalized in raw mode but correctly preserved in excess-over-readout mode.
+  2. Final Layout Sensitivity (Thermal Evaluation): 4 of 4 benchmarks differ.
+  3. Final Layout Sensitivity (Standard Evaluation): 4 of 4 benchmarks differ.
+  4. Conclusion: Re-scoring pre-filter subgraphs by excess-over-readout population actively
+     alters both the candidate set and the final layout selected across benchmarks.
+
+================================================================================
+REPORT ONLY: No changes committed to src/ or results/hardware/. Finished in 196.06 s
+================================================================================

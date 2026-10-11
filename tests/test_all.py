@@ -790,6 +790,53 @@ def test_claim_check_extra_experiment(tmp_path):
     assert not ok_br
     assert "Quoted region R99" in msg_br
 
+def test_warm_exposure_report_and_invariance():
+    report_path = Path("results/analysis/warm_exposure.txt")
+    assert report_path.exists(), "results/analysis/warm_exposure.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+    
+    # Must contain lattice geometry disclaimer
+    assert "represent graph connectivity / geometry on the heavy-hex" in text
+    assert "Do not claim 'L3 hits warm qubits X%'" in text
+    
+    # Subgraph counts must be exact
+    assert "5    566" in text
+    assert "10   9286" in text
+    assert "15   220717" in text
+    assert "20   5626985" in text
+    
+    # Random layout hits > 0.02, L1/L3 do not
+    assert "random             4          0.0% (0/4)  100.0% (4/4)" in text
+    assert "qiskit_L1          4          0.0% (0/4)    0.0% (0/4)" in text
+    assert "qiskit_L3          4          0.0% (0/4)    0.0% (0/4)" in text
+
+def test_esp_vs_success_report_and_correlations():
+    report_path = Path("results/analysis/esp_vs_success.txt")
+    assert report_path.exists(), "results/analysis/esp_vs_success.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+    
+    assert "n = 24 evaluation cells" in text
+    assert "One calibration day (2026-10-09T00:18:39+05:30)" in text
+    assert "Pearson Correlation (r):         +0.8468" in text
+    assert "Spearman Correlation (rho):      +0.8254" in text
+    assert "Bootstrap 95% Confidence Interval" in text
+    assert "24   mirror     esp_thermal" in text
+
+def test_prefilter_check_report_and_sensitivity():
+    report_path = Path("results/analysis/prefilter_check.txt")
+    assert report_path.exists(), "results/analysis/prefilter_check.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+    
+    assert "src/ was strictly preserved UNCHANGED" in text
+    assert "Top-50 Subgraphs in Common:                   38 / 50 (76.0%)" in text
+    assert "Top-50 Subgraphs Differing:                   12 / 50 (24.0%)" in text
+    assert "Jaccard Similarity Index:                     0.6129" in text
+    assert "GHZ        Thermal" in text
+    assert "BV         Thermal" in text
+    assert "QFT        Thermal" in text
+    assert "MIRROR     Thermal" in text
+
+
 
 
 

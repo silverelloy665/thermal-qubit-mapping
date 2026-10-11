@@ -323,8 +323,27 @@ def audit_readme(readme_path="README.md", csv_path="results/hardware/runtime_tab
         print(f"FAILED: {hw_ex_msg}")
         return False, hw_ex_msg
 
+    # 6. Checkpoint T2 analysis claims verification
+    an_ok, an_msg = audit_analysis_exposure_and_esp(content)
+    if not an_ok:
+        print(f"FAILED: {an_msg}")
+        return False, an_msg
+
     print("Claim audit passed: all hardware, sweep, and hardware extra claims in README.md match ground truth within tolerance.")
     return True, "All claims verified"
+
+def audit_analysis_exposure_and_esp(readme_content: str, analysis_dir="results/analysis"):
+    premature_claims = [
+        "l3 hits warm qubits",
+        "l3 hits warm qubit",
+        "esp vs success confirmed",
+        "prefilter check confirmed",
+    ]
+    for claim in premature_claims:
+        if claim in readme_content.lower():
+            return False, f"Premature unbacked claim '{claim}' found in README."
+    return True, "Analysis claims verified."
+
 
 if __name__ == "__main__":
     success, msg = audit_readme()

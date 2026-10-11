@@ -1,0 +1,89 @@
+================================================================================
+WARM QUBIT EXPOSURE ANALYSIS: IBM MARRAKESH (156 QUBITS)
+================================================================================
+
+1. CALIBRATION & HARDWARE PROFILE
+--------------------------------------------------------------------------------
+Backend:                ibm_marrakesh (156 qubits, heavy-hex)
+Calibration Timestamp:  2026-10-09T00:18:39+05:30
+Source p1 File:         p1_ibm_marrakesh_20261009T001839_0530.json
+Coupling Edges:         352 directed (176 undirected)
+Qubits with excess > 0.05: 7/156 (4.49%)
+  List (>0.05): [(11, 0.1079), (22, 0.1907), (23, 0.0531), (26, 0.1097), (94, 0.073), (125, 0.4117), (145, 0.0585)]
+Qubits with excess > 0.02: 22/156 (14.10%)
+Qubits with excess > 0.01: 43/156 (27.56%)
+
+2. LATTICE GEOMETRY: CONNECTED SUBGRAPH EXPOSURE
+--------------------------------------------------------------------------------
+NOTE: These fractions represent graph connectivity / geometry on the heavy-hex
+lattice ONLY. They do NOT imply compiler exposure rates for uncompiled circuits.
+Do not claim 'L3 hits warm qubits X%' for circuits we did not compile.
+
+k    Total Subgraphs  Excess > 0.05        Excess > 0.02        Excess > 0.01        Compute Time
+------------------------------------------------------------------------------------------------
+5    566              117 (20.67%)         324 (57.24%)         456 (80.57%)         0.00 s
+10   9286             3086 (33.23%)        8034 (86.52%)        9153 (98.57%)        0.03 s
+15   220717           90568 (41.03%)       212776 (96.40%)      220647 (99.97%)      0.60 s
+20   5626985          2715554 (48.26%)     5578320 (99.14%)     5626985 (100.00%)    14.83 s
+
+3. COMMITTED HARDWARE LAYOUTS EXPOSURE (FROM RUNTIME_TABLE.CSV)
+--------------------------------------------------------------------------------
+Evaluates the physical qubit layouts committed in results/hardware/runtime_table.csv.
+
+Method             Benchmark  Physical Layout            Max Excess   >0.05    >0.02    >0.01    Warm Qubits (>0.01)
+---------------------------------------------------------------------------------------------------------
+random             ghz        [80, 61, 62, 76, 81]       +0.0453     False    True     True     [62, 76, 81]
+qiskit_L1          ghz        [0, 1, 2, 3, 4]            +0.0143     False    False    True     [2]
+qiskit_L3          ghz        [33, 34, 35, 19, 15]       +0.0045     False    False    False    none
+qiskit_L3_best3    ghz        [33, 34, 35, 19, 15]       +0.0045     False    False    False    none
+esp_no_thermal     ghz        [32, 33, 34, 35, 19]       +0.0045     False    False    False    none
+esp_thermal        ghz        [32, 33, 34, 35, 19]       +0.0045     False    False    False    none
+random             bv         [80, 61, 62, 76, 81]       +0.0453     False    True     True     [62, 76, 81]
+qiskit_L1          bv         [3, 153, 6, 1, 2]          +0.0173     False    False    True     [153, 2]
+qiskit_L3          bv         [3, 153, 6, 1, 2]          +0.0173     False    False    True     [153, 2]
+qiskit_L3_best3    bv         [3, 153, 6, 1, 2]          +0.0173     False    False    True     [153, 2]
+esp_no_thermal     bv         [34, 19, 35, 32, 33]       +0.0045     False    False    False    none
+esp_thermal        bv         [34, 19, 35, 32, 33]       +0.0045     False    False    False    none
+random             qft        [80, 61, 62, 76, 81]       +0.0453     False    True     True     [62, 76, 81]
+qiskit_L1          qft        [55, 39, 52, 54, 53]       +0.0121     False    False    True     [54]
+qiskit_L3          qft        [55, 52, 39, 54, 53]       +0.0121     False    False    True     [54]
+qiskit_L3_best3    qft        [55, 52, 39, 54, 53]       +0.0121     False    False    True     [54]
+esp_no_thermal     qft        [35, 19, 34, 15, 14]       +0.0085     False    False    False    none
+esp_thermal        qft        [35, 19, 34, 15, 14]       +0.0085     False    False    False    none
+random             mirror     [80, 61, 62, 76, 81]       +0.0453     False    True     True     [62, 76, 81]
+qiskit_L1          mirror     [4, 2, 16, 1, 3]           +0.0143     False    False    True     [2]
+qiskit_L3          mirror     [54, 53, 39, 52, 55]       +0.0121     False    False    True     [54]
+qiskit_L3_best3    mirror     [54, 53, 39, 52, 55]       +0.0121     False    False    True     [54]
+esp_no_thermal     mirror     [39, 53, 55, 54, 33]       +0.0121     False    False    True     [54]
+esp_thermal        mirror     [39, 53, 55, 54, 33]       +0.0121     False    False    True     [54]
+
+4. SUMMARY PER METHOD (ACROSS BENCHMARKS)
+--------------------------------------------------------------------------------
+Method             N Cells  Frac > 0.05    Frac > 0.02    Frac > 0.01    Warmest Qubit Encountered
+-------------------------------------------------------------------------------------
+random             4          0.0% (0/4)  100.0% (4/4)  100.0% (4/4)  excess = +0.0453
+qiskit_L1          4          0.0% (0/4)    0.0% (0/4)  100.0% (4/4)  excess = +0.0173
+qiskit_L3          4          0.0% (0/4)    0.0% (0/4)   75.0% (3/4)  excess = +0.0173
+qiskit_L3_best3    4          0.0% (0/4)    0.0% (0/4)   75.0% (3/4)  excess = +0.0173
+esp_no_thermal     4          0.0% (0/4)    0.0% (0/4)   25.0% (1/4)  excess = +0.0121
+esp_thermal        4          0.0% (0/4)    0.0% (0/4)   25.0% (1/4)  excess = +0.0121
+
+5. CORE METHOD COMPARISON (RANDOM, L1, L3, ESP)
+--------------------------------------------------------------------------------
+Key Observations on Hardware Layouts:
+  - random (layout [80, 61, 62, 76, 81]):
+      Hits warm qubits > 0.02 in 4 of 4 benchmarks (100.0%): Q62 (+0.0336), Q76 (+0.0453), Q81 (+0.0447).
+      Does not contain any of the 7 extreme hot spots (> 0.05).
+  - qiskit_L1:
+      Hits warm qubits > 0.01 in 4 of 4 benchmarks (100.0%): Q2 (+0.0143) and Q153 (+0.0173).
+      0 of 4 benchmarks hit qubits > 0.02 or > 0.05.
+  - qiskit_L3:
+      Hits warm qubits > 0.01 in 3 of 4 benchmarks (75.0%): Q2/Q153 in BV, Q54 (+0.0121) in QFT and Mirror.
+      0 of 4 benchmarks hit qubits > 0.02 or > 0.05.
+  - esp_no_thermal & esp_thermal:
+      Hits warm qubits > 0.01 in 1 of 4 benchmarks (25.0%): Q54 (+0.0121) in Mirror.
+      0 of 4 benchmarks hit qubits > 0.02 or > 0.05.
+
+================================================================================
+ANALYSIS COMPLETE: Finished in 15.81 s
+================================================================================
