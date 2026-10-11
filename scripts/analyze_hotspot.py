@@ -211,6 +211,8 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
                 "z_stat": z_stat,
                 "p_value_raw": p_val,
                 "diff_2q": b_meta.get("diff_2q", 0),
+                "confounded": abs(b_meta.get("diff_2q", 0)) > 4,
+                "confounded_reason": f"|diff_2q|={abs(b_meta.get('diff_2q', 0))} > 4" if abs(b_meta.get("diff_2q", 0)) > 4 else "None",
                 "diff_depth": b_meta.get("diff_depth", 0),
                 "hot_2q": b_meta.get("hot_2q", 0),
                 "clean_2q": b_meta.get("clean_2q", 0),
@@ -220,7 +222,7 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
                 "esp_hot": b_meta.get("hot_esp", 0.0),
                 "diff_esp": b_meta.get("clean_esp", 0.0) - b_meta.get("hot_esp", 0.0),
                 "thermal_equals_clean": b_meta.get("thermal_equals_clean", True),
-                "penalty_confirmed_cell": (ci_low_pts > 0.0 and diff_pts >= 0.5)
+                "penalty_confirmed_cell": (ci_low_pts > 0.0 and diff_pts >= 0.5 and abs(b_meta.get("diff_2q", 0)) <= 4)
             })
 
     df_stats = pd.DataFrame(rows)
@@ -307,19 +309,31 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
     lines.append("")
 
     # Decision Rule Evaluation
-    lines.append("DECISION RULE VERIFICATION:")
+    lines.append("DECISION RULE VERIFICATION (AMENDED IN CHECKPOINT R):")
     lines.append("--------------------------------------------------------------------------------")
-    lines.append("Pre-registered criterion: 'hot-spot penalty confirmed' for a benchmark only if the")
-    lines.append("pooled CLEAN - HOT difference has CI lower bound > 0 AND is >= 0.5 pt in at least 2 regions.")
+    lines.append("Pre-registered criterion: 'hot-spot penalty confirmed' for a benchmark only if among")
+    lines.append("VALID (non-confounded, |diff_2q| <= 4) candidate regions, the pooled CLEAN - HOT")
+    lines.append("difference has CI lower bound > 0 AND is >= 0.5 pt in at least 2 regions.")
+    lines.append("Cells with |native 2q difference HOT vs CLEAN| > 4 are designated as 'confounded'")
+    lines.append("and excluded from contributing to the confirmation threshold, but reported.")
     lines.append("")
     benchmark_decisions = {}
     for b_name in benchmarks_list:
         sub = df_stats[df_stats["benchmark"] == b_name]
-        passing_regions = sub[sub["penalty_confirmed_cell"] == True]
+        valid_sub = sub[sub["confounded"] == False]
+        passing_regions = valid_sub[valid_sub["penalty_confirmed_cell"] == True]
+        num_valid = len(valid_sub)
         num_pass = len(passing_regions)
-        is_confirmed = (num_pass >= 2)
-        status_str = f"CONFIRMED ({num_pass}/3 regions meet CI low > 0 and diff >= 0.5 pt)" if is_confirmed else f"NOT CONFIRMED ({num_pass}/3 regions meet criterion)"
-        benchmark_decisions[b_name] = (is_confirmed, num_pass)
+        if num_valid < 2:
+            status_str = f"INCONCLUSIVE / UNCONFIRMED (only {num_valid}/3 regions are non-confounded; cannot reach >= 2 threshold)"
+            is_confirmed = False
+        elif num_pass >= 2:
+            status_str = f"CONFIRMED ({num_pass}/{num_valid} valid non-confounded regions meet CI low > 0 and diff >= 0.5 pt)"
+            is_confirmed = True
+        else:
+            status_str = f"NOT CONFIRMED ({num_pass}/{num_valid} valid non-confounded regions meet criterion)"
+            is_confirmed = False
+        benchmark_decisions[b_name] = (is_confirmed, num_pass, num_valid)
         lines.append(f"  Benchmark '{b_name:<6}': {status_str}")
 
     lines.append("")

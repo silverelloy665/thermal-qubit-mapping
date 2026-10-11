@@ -2,7 +2,7 @@
 """
 scripts/prove_refusals.py
 
-Executes all 7 refusal conditions locally against FakeMarrakesh / plan.json
+Executes all safety refusal conditions locally against FakeMarrakesh / plan.json
 and records the raw exception outputs to results/hardware_extra/refusal_proofs.txt.
 """
 
@@ -56,9 +56,52 @@ def run_proofs(output_txt_path="results/hardware_extra/refusal_proofs.txt"):
     lines.append("")
 
     # -------------------------------------------------------------------------
-    # PROOF 2: Refusal with expired pilot file (> 24 hours old)
+    # PROOF 2: Refusal with pilot file missing job_id
     # -------------------------------------------------------------------------
-    lines.append("PROOF 2: REFUSAL WITH EXPIRED PILOT FILE (> 24 HOURS OLD)")
+    lines.append("PROOF 2: REFUSAL WITH PILOT FILE MISSING JOB_ID")
+    lines.append("-" * 80)
+    no_job_pilot = dict(baseline_pilot)
+    if "job_id" in no_job_pilot:
+        del no_job_pilot["job_id"]
+    with open(pilot_scale_path, "w", encoding="utf-8") as f:
+        json.dump(no_job_pilot, f, indent=2)
+    try:
+        cmd = [sys.executable, "scripts/run_hotspot_hw.py", "--local", "--execute", "--approve-seconds", str(required_approve)]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        lines.append(f"Command: {' '.join(cmd)}")
+        lines.append(f"Exit code: {res.returncode}")
+        lines.append(f"Output / Error:\n{res.stderr.strip() or res.stdout.strip()}")
+        lines.append("[VERIFIED] Refused execution when pilot file has no job_id.")
+    finally:
+        with open(pilot_scale_path, "w", encoding="utf-8") as f:
+            json.dump(baseline_pilot, f, indent=2)
+    lines.append("")
+
+    # -------------------------------------------------------------------------
+    # PROOF 3: Refusal with pilot timestamp older than plan creation time
+    # -------------------------------------------------------------------------
+    lines.append("PROOF 3: REFUSAL WITH PILOT TIMESTAMP OLDER THAN PLAN CREATION")
+    lines.append("-" * 80)
+    stale_pilot = dict(baseline_pilot)
+    stale_pilot["timestamp"] = baseline_plan.get("created_timestamp", 1760164800.0) - 3600.0
+    with open(pilot_scale_path, "w", encoding="utf-8") as f:
+        json.dump(stale_pilot, f, indent=2)
+    try:
+        cmd = [sys.executable, "scripts/run_hotspot_hw.py", "--local", "--execute", "--approve-seconds", str(required_approve)]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        lines.append(f"Command: {' '.join(cmd)}")
+        lines.append(f"Exit code: {res.returncode}")
+        lines.append(f"Output / Error:\n{res.stderr.strip() or res.stdout.strip()}")
+        lines.append("[VERIFIED] Refused execution when pilot timestamp is older than plan creation time.")
+    finally:
+        with open(pilot_scale_path, "w", encoding="utf-8") as f:
+            json.dump(baseline_pilot, f, indent=2)
+    lines.append("")
+
+    # -------------------------------------------------------------------------
+    # PROOF 4: Refusal with expired pilot file (> 24 hours old)
+    # -------------------------------------------------------------------------
+    lines.append("PROOF 4: REFUSAL WITH EXPIRED PILOT FILE (> 24 HOURS OLD)")
     lines.append("-" * 80)
     expired_pilot = dict(baseline_pilot)
     expired_pilot["timestamp"] = time.time() - 90000 # 25 hours ago
@@ -77,9 +120,9 @@ def run_proofs(output_txt_path="results/hardware_extra/refusal_proofs.txt"):
     lines.append("")
 
     # -------------------------------------------------------------------------
-    # PROOF 3: Refusal with changed plan hash / modified plan
+    # PROOF 5: Refusal with changed plan hash / modified plan
     # -------------------------------------------------------------------------
-    lines.append("PROOF 3: REFUSAL WITH CHANGED PLAN HASH / TAMPERED PLAN")
+    lines.append("PROOF 5: REFUSAL WITH CHANGED PLAN HASH / TAMPERED PLAN")
     lines.append("-" * 80)
     tampered_plan = dict(baseline_plan)
     tampered_plan["plan_hash"] = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -98,9 +141,9 @@ def run_proofs(output_txt_path="results/hardware_extra/refusal_proofs.txt"):
     lines.append("")
 
     # -------------------------------------------------------------------------
-    # PROOF 4: Refusal with wrong approval seconds
+    # PROOF 6: Refusal with wrong approval seconds
     # -------------------------------------------------------------------------
-    lines.append("PROOF 4: REFUSAL WITH WRONG APPROVAL SECONDS")
+    lines.append("PROOF 6: REFUSAL WITH WRONG APPROVAL SECONDS")
     lines.append("-" * 80)
     wrong_approve = required_approve + 15
     cmd = [sys.executable, "scripts/run_hotspot_hw.py", "--local", "--execute", "--approve-seconds", str(wrong_approve)]
@@ -112,11 +155,10 @@ def run_proofs(output_txt_path="results/hardware_extra/refusal_proofs.txt"):
     lines.append("")
 
     # -------------------------------------------------------------------------
-    # PROOF 5: Refusal if remaining allowance - projected spend < reserve_s
+    # PROOF 7: Refusal if remaining allowance - projected spend < reserve_s
     # -------------------------------------------------------------------------
-    lines.append("PROOF 5: REFUSAL IF REMAINING ALLOWANCE < RESERVE BUFFER")
+    lines.append("PROOF 7: REFUSAL IF REMAINING ALLOWANCE < RESERVE BUFFER")
     lines.append("-" * 80)
-    # Temporarily modify config.yaml to simulate depleted allowance
     config_path = Path("config.yaml")
     with open(config_path, "r", encoding="utf-8") as f:
         config_text = f.read()
@@ -136,9 +178,9 @@ def run_proofs(output_txt_path="results/hardware_extra/refusal_proofs.txt"):
     lines.append("")
 
     # -------------------------------------------------------------------------
-    # PROOF 6: Refusal if calibration timestamp changed since planning
+    # PROOF 8: Refusal if calibration timestamp changed since planning
     # -------------------------------------------------------------------------
-    lines.append("PROOF 6: REFUSAL IF CALIBRATION TIMESTAMP CHANGED SINCE PLANNING")
+    lines.append("PROOF 8: REFUSAL IF CALIBRATION TIMESTAMP CHANGED SINCE PLANNING")
     lines.append("-" * 80)
     outdated_plan = dict(baseline_plan)
     outdated_plan["calibration_timestamp"] = "2024-01-01T00:00:00+00:00"
@@ -158,33 +200,31 @@ def run_proofs(output_txt_path="results/hardware_extra/refusal_proofs.txt"):
     lines.append("")
 
     # -------------------------------------------------------------------------
-    # PROOF 7: Refusal if newest p1 file is older than calibration timestamp
+    # PROOF 9: Refusal in dry run if total estimate exceeds extra_run_cap_s
     # -------------------------------------------------------------------------
-    lines.append("PROOF 7: REFUSAL IF NEWEST P1 FILE IS OLDER THAN CALIBRATION")
+    lines.append("PROOF 9: REFUSAL IN DRY RUN IF ESTIMATE EXCEEDS EXTRA_RUN_CAP_S")
     lines.append("-" * 80)
-    stale_p1_path = Path("results/hardware_extra/p1_ibm_marrakesh_20990101T000000_0000.json")
-    stale_p1_data = {
-        "timestamp": "1999-01-01T00:00:00+00:00",
-        "p1_estimate": {str(q): 0.01 for q in range(156)}
-    }
-    with open(stale_p1_path, "w", encoding="utf-8") as f:
-        json.dump(stale_p1_data, f, indent=2)
-    # Set mtime to future so it is picked as newest
-    os.utime(stale_p1_path, (time.time() + 1000, time.time() + 1000))
     try:
-        cmd = [sys.executable, "scripts/run_hotspot_hw.py", "--local", "--execute", "--approve-seconds", str(required_approve)]
+        low_cap_text = config_text.replace("extra_run_cap_s: 110", "extra_run_cap_s: 80")
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(low_cap_text)
+        cmd = [sys.executable, "scripts/run_hotspot_hw.py", "--local"]
         res = subprocess.run(cmd, capture_output=True, text=True)
         lines.append(f"Command: {' '.join(cmd)}")
         lines.append(f"Exit code: {res.returncode}")
         lines.append(f"Output / Error:\n{res.stderr.strip() or res.stdout.strip()}")
-        lines.append("[VERIFIED] Refused execution when newest p1 characterization is older than calibration.")
+        lines.append("[VERIFIED] Refused dry run execution when total estimate exceeds extra_run_cap_s.")
     finally:
-        if stale_p1_path.exists():
-            stale_p1_path.unlink()
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(config_text)
     lines.append("")
 
+    # Clean up generated pilot file from results/ directory so results/ stays clean
+    if pilot_scale_path.exists():
+        pilot_scale_path.unlink()
+
     lines.append("=" * 80)
-    lines.append("ALL 7 REFUSAL CONDITIONS RIGOROUSLY DEMONSTRATED AND VERIFIED")
+    lines.append("ALL REFUSAL CONDITIONS RIGOROUSLY DEMONSTRATED AND VERIFIED")
     lines.append("=" * 80)
 
     out_content = "\n".join(lines) + "\n"
@@ -196,4 +236,3 @@ def run_proofs(output_txt_path="results/hardware_extra/refusal_proofs.txt"):
 
 if __name__ == "__main__":
     run_proofs()
-

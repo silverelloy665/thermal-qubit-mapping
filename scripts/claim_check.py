@@ -127,6 +127,19 @@ def audit_sweep_and_p1(readme_content: str, sweep_csv="results/sim/thermal_sweep
         if str(q) not in readme_content:
             return False, f"Expected readout-failure qubit {q} not mentioned in README."
 
+    # Check 5 chip-wide readout failure qubits (Checkpoint P / R)
+    rf_file = "results/hardware/readout_failures.txt"
+    if not os.path.exists(rf_file):
+        return False, f"Readout failures file {rf_file} not found."
+    with open(rf_file, "r", encoding="utf-8") as f:
+        rf_text = f.read()
+    chip_5 = [82, 94, 102, 113, 130]
+    for q in chip_5:
+        if str(q) not in rf_text:
+            return False, f"Expected chip-wide readout failure qubit {q} missing from {rf_file}."
+        if str(q) not in readme_content:
+            return False, f"Expected chip-wide readout failure qubit {q} not mentioned in README."
+
     # 4. Verify first crossings and quoted gains for Guadalupe
     for b in ['ghz', 'bv', 'qft', 'mirror']:
         for k in [1, 2, 3]:

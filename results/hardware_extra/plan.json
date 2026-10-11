@@ -1,4 +1,10 @@
 {
+  "created_timestamp": 1760164800.0,
+  "created_at": "2026-10-11T12:00:00+00:00",
+  "excess_metric_label": "excess P(1|0) over calibrated readout error",
+  "confounding_rule": "Cells with |native 2q difference HOT vs CLEAN| > 4 are confounded and excluded from the decision rule but reported.",
+  "decision_rule": "hot-spot penalty confirmed for a benchmark only if among non-confounded regions, the pooled CLEAN - HOT diff has Newcombe 95% CI lower bound > 0 and is >= 0.5 pt in >= 2 regions.",
+  "confounding_threshold_2q": 4,
   "backend": "fake_marrakesh",
   "calibration_timestamp": "2025-02-26T14:52:45-05:00",
   "p1_source_file": "results/hardware/p1_ibm_marrakesh_20261009T001839_0530.json",
@@ -30,7 +36,7 @@
   "total_estimate_seconds": 108.0,
   "allowance_remaining_s": 279.0,
   "reserve_s": 150.0,
-  "extra_run_cap_s": 100.0,
+  "extra_run_cap_s": 110.0,
   "remaining_after_run_s": 164.0,
   "shots": 8192,
   "repetitions": 2,
@@ -92,6 +98,8 @@
           "hot_2q": 4,
           "clean_2q": 8,
           "diff_2q": 4,
+          "confounded": false,
+          "confounded_reason": "None (|diff_2q| <= 4)",
           "hot_depth": 16,
           "clean_depth": 20,
           "diff_depth": 4
@@ -124,6 +132,8 @@
           "hot_2q": 8,
           "clean_2q": 8,
           "diff_2q": 0,
+          "confounded": false,
+          "confounded_reason": "None (|diff_2q| <= 4)",
           "hot_depth": 20,
           "clean_depth": 20,
           "diff_depth": 0
@@ -156,6 +166,8 @@
           "hot_2q": 51,
           "clean_2q": 50,
           "diff_2q": -1,
+          "confounded": false,
+          "confounded_reason": "None (|diff_2q| <= 4)",
           "hot_depth": 116,
           "clean_depth": 123,
           "diff_depth": 7
@@ -216,6 +228,8 @@
           "hot_2q": 5,
           "clean_2q": 4,
           "diff_2q": -1,
+          "confounded": false,
+          "confounded_reason": "None (|diff_2q| <= 4)",
           "hot_depth": 17,
           "clean_depth": 16,
           "diff_depth": -1
@@ -248,6 +262,8 @@
           "hot_2q": 2,
           "clean_2q": 8,
           "diff_2q": 6,
+          "confounded": true,
+          "confounded_reason": "|diff_2q|=6 > 4",
           "hot_depth": 14,
           "clean_depth": 20,
           "diff_depth": 6
@@ -280,6 +296,8 @@
           "hot_2q": 54,
           "clean_2q": 49,
           "diff_2q": -5,
+          "confounded": true,
+          "confounded_reason": "|diff_2q|=5 > 4",
           "hot_depth": 126,
           "clean_depth": 112,
           "diff_depth": -14
@@ -343,6 +361,8 @@
           "hot_2q": 4,
           "clean_2q": 4,
           "diff_2q": 0,
+          "confounded": false,
+          "confounded_reason": "None (|diff_2q| <= 4)",
           "hot_depth": 16,
           "clean_depth": 16,
           "diff_depth": 0
@@ -375,6 +395,8 @@
           "hot_2q": 5,
           "clean_2q": 8,
           "diff_2q": 3,
+          "confounded": false,
+          "confounded_reason": "None (|diff_2q| <= 4)",
           "hot_depth": 17,
           "clean_depth": 20,
           "diff_depth": 3
@@ -407,6 +429,8 @@
           "hot_2q": 54,
           "clean_2q": 42,
           "diff_2q": -12,
+          "confounded": true,
+          "confounded_reason": "|diff_2q|=12 > 4",
           "hot_depth": 126,
           "clean_depth": 118,
           "diff_depth": -8
@@ -414,5 +438,5 @@
       }
     }
   ],
-  "plan_hash": "70f88e0401cb711cb6e294f04021186432cedb531662f222a167f36edee5ce5e"
+  "plan_hash": "d046831b5a754c1ba5d22d2c60fd771747c40425fc717d263b5f7d2bd8343848"
 }

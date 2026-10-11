@@ -500,11 +500,14 @@ def test_hotspot_plan_hash_stability():
 
     computed_h = compute_plan_hash(plan)
     assert computed_h == plan["plan_hash"]
-    assert computed_h == "70f88e0401cb711cb6e294f04021186432cedb531662f222a167f36edee5ce5e"
+    assert computed_h == "d046831b5a754c1ba5d22d2c60fd771747c40425fc717d263b5f7d2bd8343848"
 
-def test_hotspot_synthetic_analysis_known_answer():
-    """Verify known-answer statistical calculations for hotspot stress test."""
-    from scripts.analyze_hotspot import newcombe_diff_ci, two_prop_z_test, wilson_score_interval
+def test_hotspot_synthetic_analysis_known_answer(tmp_path):
+    """Verify known-answer statistical calculations for hotspot stress test in tmp dir."""
+    import pandas as pd
+    from scripts.analyze_hotspot import (
+        newcombe_diff_ci, two_prop_z_test, wilson_score_interval, analyze_hotspot
+    )
 
     # Equal proportions -> diff = 0, CI symmetric about 0, z = 0, p = 1.0
     diff, ci_l, ci_u = newcombe_diff_ci(8000, 16384, 8000, 16384)
@@ -522,12 +525,34 @@ def test_hotspot_synthetic_analysis_known_answer():
     assert z2 > 3.0
     assert p2 < 1e-3
 
+    # End-to-end synthetic run into tmp_path
+    tmp_csv = tmp_path / "extra_stats.csv"
+    tmp_txt = tmp_path / "extra_summary.txt"
+    analyze_hotspot(
+        plan_path="results/hardware_extra/plan.json",
+        raw_dir="results/hardware_extra/raw",
+        out_csv=str(tmp_csv),
+        out_txt=str(tmp_txt),
+        synthetic=True,
+        synthetic_effect_pts=1.2
+    )
+    assert tmp_csv.exists()
+    assert tmp_txt.exists()
+    df = pd.read_csv(tmp_csv)
+    assert len(df) == 9
+    # Verify confounding column correctly excludes R2-bv, R2-mirror, R3-mirror
+    conf_r2_bv = df[(df.region_id == 2) & (df.benchmark == "bv")].iloc[0]["confounded"]
+    conf_r1_ghz = df[(df.region_id == 1) & (df.benchmark == "ghz")].iloc[0]["confounded"]
+    assert conf_r2_bv == True
+    assert conf_r1_ghz == False
+
 def test_hotspot_refusal_behavior(monkeypatch, tmp_path):
     """Verify that execution is refused when safety conditions are violated."""
+    import time
+    import json
     import argparse
     from scripts.run_hotspot_hw import run_hotspot
 
-    # 1. Missing pilot file refusal
     pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
     bak_path = tmp_path / "pilot_bak.json"
     if pilot_scale_path.exists():
@@ -536,22 +561,62 @@ def test_hotspot_refusal_behavior(monkeypatch, tmp_path):
         pilot_scale_path.unlink()
 
     try:
+        # 1. Missing pilot file refusal
         args_missing_pilot = argparse.Namespace(
             local=True, execute=True, approve_seconds=108, dry_run=False, pilot=False, strict_d2=False
         )
         with pytest.raises(ValueError, match="missing. Run --pilot first"):
             run_hotspot(args_missing_pilot)
+
+        # 2. Pilot file missing job_id refusal (proven per Item 1)
+        no_job_pilot = {
+            "backend": "fake_marrakesh",
+            "timestamp": time.time() + 1000.0,
+            "qpu_seconds_per_shot": 3.0 / 8192,
+            "pilot_usage": 3.0
+        }
+        with open(pilot_scale_path, "w", encoding="utf-8") as f:
+            json.dump(no_job_pilot, f)
+        with pytest.raises(ValueError, match="missing job_id"):
+            run_hotspot(args_missing_pilot)
+
+        # 3. Pilot file with timestamp <= plan creation time
+        stale_ts_pilot = {
+            "backend": "fake_marrakesh",
+            "job_id": "job_123",
+            "timestamp": 1000.0, # far in the past before plan creation
+            "qpu_seconds_per_shot": 3.0 / 8192,
+            "pilot_usage": 3.0
+        }
+        with open(pilot_scale_path, "w", encoding="utf-8") as f:
+            json.dump(stale_ts_pilot, f)
+        with pytest.raises(ValueError, match="older than or equal to plan creation time"):
+            run_hotspot(args_missing_pilot)
+
+        # 4. Valid pilot file for further checks
+        valid_pilot = {
+            "backend": "fake_marrakesh",
+            "job_id": "job_test_pilot",
+            "timestamp": time.time() + 500.0,
+            "qpu_seconds_per_shot": 3.0 / 8192,
+            "pilot_usage": 3.0
+        }
+        with open(pilot_scale_path, "w", encoding="utf-8") as f:
+            json.dump(valid_pilot, f)
+
+        # 5. Wrong approve-seconds refusal
+        args_wrong_sec = argparse.Namespace(
+            local=True, execute=True, approve_seconds=999, dry_run=False, pilot=False, strict_d2=False
+        )
+        with pytest.raises(ValueError, match="does not match required"):
+            run_hotspot(args_wrong_sec)
+
     finally:
+        if pilot_scale_path.exists():
+            pilot_scale_path.unlink()
         if bak_path.exists():
             import shutil
             shutil.copy(bak_path, pilot_scale_path)
-
-    # 2. Wrong approve-seconds refusal
-    args_wrong_sec = argparse.Namespace(
-        local=True, execute=True, approve_seconds=999, dry_run=False, pilot=False, strict_d2=False
-    )
-    with pytest.raises(ValueError, match="does not match required"):
-        run_hotspot(args_wrong_sec)
 
 
 

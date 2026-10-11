@@ -8,127 +8,163 @@ Command: C:\Users\Aarush\AppData\Local\Programs\Python\Python313\python.exe scri
 Exit code: 1
 Output / Error:
 Traceback (most recent call last):
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 726, in <module>
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 776, in <module>
     main()
     ~~~~^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 723, in main
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 773, in main
     run_hotspot(args)
     ~~~~~~~~~~~^^^^^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 348, in run_hotspot
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 362, in run_hotspot
     raise ValueError(f"Refusal: Pilot file '{pilot_scale_path}' missing. Run --pilot first.")
 ValueError: Refusal: Pilot file 'results\hardware_extra\pilot_scale.json' missing. Run --pilot first.
 [VERIFIED] Refused execution when pilot file is missing.
 
-PROOF 2: REFUSAL WITH EXPIRED PILOT FILE (> 24 HOURS OLD)
+PROOF 2: REFUSAL WITH PILOT FILE MISSING JOB_ID
 --------------------------------------------------------------------------------
 Command: C:\Users\Aarush\AppData\Local\Programs\Python\Python313\python.exe scripts/run_hotspot_hw.py --local --execute --approve-seconds 108
 Exit code: 1
 Output / Error:
 Traceback (most recent call last):
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 726, in <module>
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 776, in <module>
     main()
     ~~~~^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 723, in main
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 773, in main
     run_hotspot(args)
     ~~~~~~~~~~~^^^^^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 352, in run_hotspot
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 382, in run_hotspot
+    raise ValueError("Refusal: Pilot file missing job_id. Real QPU pilot run required.")
+ValueError: Refusal: Pilot file missing job_id. Real QPU pilot run required.
+[VERIFIED] Refused execution when pilot file has no job_id.
+
+PROOF 3: REFUSAL WITH PILOT TIMESTAMP OLDER THAN PLAN CREATION
+--------------------------------------------------------------------------------
+Command: C:\Users\Aarush\AppData\Local\Programs\Python\Python313\python.exe scripts/run_hotspot_hw.py --local --execute --approve-seconds 108
+Exit code: 1
+Output / Error:
+Traceback (most recent call last):
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 776, in <module>
+    main()
+    ~~~~^^
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 773, in main
+    run_hotspot(args)
+    ~~~~~~~~~~~^^^^^^
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 387, in run_hotspot
+    raise ValueError(
+        f"Refusal: Pilot timestamp ({pilot_ts}) is older than or equal to plan creation time ({plan_created_ts}). Run --pilot after establishing plan."
+    )
+ValueError: Refusal: Pilot timestamp (1760161200.0) is older than or equal to plan creation time (1760164800.0). Run --pilot after establishing plan.
+[VERIFIED] Refused execution when pilot timestamp is older than plan creation time.
+
+PROOF 4: REFUSAL WITH EXPIRED PILOT FILE (> 24 HOURS OLD)
+--------------------------------------------------------------------------------
+Command: C:\Users\Aarush\AppData\Local\Programs\Python\Python313\python.exe scripts/run_hotspot_hw.py --local --execute --approve-seconds 108
+Exit code: 1
+Output / Error:
+Traceback (most recent call last):
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 776, in <module>
+    main()
+    ~~~~^^
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 773, in main
+    run_hotspot(args)
+    ~~~~~~~~~~~^^^^^^
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 392, in run_hotspot
     raise ValueError(f"Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
 ValueError: Refusal: Pilot scale file is older than 24 hours. Run --pilot again.
 [VERIFIED] Refused execution when pilot file exceeds 24-hour validity window.
 
-PROOF 3: REFUSAL WITH CHANGED PLAN HASH / TAMPERED PLAN
+PROOF 5: REFUSAL WITH CHANGED PLAN HASH / TAMPERED PLAN
 --------------------------------------------------------------------------------
 Command: C:\Users\Aarush\AppData\Local\Programs\Python\Python313\python.exe scripts/run_hotspot_hw.py --local --execute --approve-seconds 108
 Exit code: 1
 Output / Error:
 Traceback (most recent call last):
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 726, in <module>
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 776, in <module>
     main()
     ~~~~^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 723, in main
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 773, in main
     run_hotspot(args)
     ~~~~~~~~~~~^^^^^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 649, in run_hotspot
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 699, in run_hotspot
     raise ValueError("Refusal: Current plan hash does not match saved results/hardware_extra/plan.json!")
 ValueError: Refusal: Current plan hash does not match saved results/hardware_extra/plan.json!
 [VERIFIED] Refused execution when plan hash does not match expected canonical hash.
 
-PROOF 4: REFUSAL WITH WRONG APPROVAL SECONDS
+PROOF 6: REFUSAL WITH WRONG APPROVAL SECONDS
 --------------------------------------------------------------------------------
 Command: C:\Users\Aarush\AppData\Local\Programs\Python\Python313\python.exe scripts/run_hotspot_hw.py --local --execute --approve-seconds 123
 Exit code: 1
 Output / Error:
 Traceback (most recent call last):
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 726, in <module>
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 776, in <module>
     main()
     ~~~~^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 723, in main
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 773, in main
     run_hotspot(args)
     ~~~~~~~~~~~^^^^^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 372, in run_hotspot
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 406, in run_hotspot
     raise ValueError(
         f"Refusal: --approve-seconds {args.approve_seconds} does not match required {required_approve}."
     )
 ValueError: Refusal: --approve-seconds 123 does not match required 108.
 [VERIFIED] Refused execution when approved seconds (123) != required (108).
 
-PROOF 5: REFUSAL IF REMAINING ALLOWANCE < RESERVE BUFFER
+PROOF 7: REFUSAL IF REMAINING ALLOWANCE < RESERVE BUFFER
 --------------------------------------------------------------------------------
 Command: C:\Users\Aarush\AppData\Local\Programs\Python\Python313\python.exe scripts/run_hotspot_hw.py --local --execute --approve-seconds 108
 Exit code: 1
 Output / Error:
 Traceback (most recent call last):
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 726, in <module>
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 776, in <module>
     main()
     ~~~~^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 723, in main
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 773, in main
     run_hotspot(args)
     ~~~~~~~~~~~^^^^^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 381, in run_hotspot
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 415, in run_hotspot
     raise ValueError(
     ...<2 lines>...
     )
 ValueError: Refusal: Insufficient allowance. Remaining (200.0 s) - projected spend (115.0 s) < reserve (150.0 s).
 [VERIFIED] Refused execution when remaining allowance would drop below reserve buffer (150 s).
 
-PROOF 6: REFUSAL IF CALIBRATION TIMESTAMP CHANGED SINCE PLANNING
+PROOF 8: REFUSAL IF CALIBRATION TIMESTAMP CHANGED SINCE PLANNING
 --------------------------------------------------------------------------------
 Command: C:\Users\Aarush\AppData\Local\Programs\Python\Python313\python.exe scripts/run_hotspot_hw.py --local --execute --approve-seconds 108
 Exit code: 1
 Output / Error:
 Traceback (most recent call last):
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 726, in <module>
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 776, in <module>
     main()
     ~~~~^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 723, in main
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 773, in main
     run_hotspot(args)
     ~~~~~~~~~~~^^^^^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 362, in run_hotspot
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 396, in run_hotspot
     raise ValueError(
     ...<2 lines>...
     )
 ValueError: Refusal: Calibration timestamp changed since planning (2025-02-26T14:52:45-05:00 != 2024-01-01T00:00:00+00:00). Re-run dry run.
 [VERIFIED] Refused execution when backend calibration timestamp differs from plan.
 
-PROOF 7: REFUSAL IF NEWEST P1 FILE IS OLDER THAN CALIBRATION
+PROOF 9: REFUSAL IN DRY RUN IF ESTIMATE EXCEEDS EXTRA_RUN_CAP_S
 --------------------------------------------------------------------------------
-Command: C:\Users\Aarush\AppData\Local\Programs\Python\Python313\python.exe scripts/run_hotspot_hw.py --local --execute --approve-seconds 108
+Command: C:\Users\Aarush\AppData\Local\Programs\Python\Python313\python.exe scripts/run_hotspot_hw.py --local
 Exit code: 1
 Output / Error:
 Traceback (most recent call last):
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 726, in <module>
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 776, in <module>
     main()
     ~~~~^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 723, in main
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 773, in main
     run_hotspot(args)
     ~~~~~~~~~~~^^^^^^
-  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 336, in run_hotspot
+  File "D:\dev\thermal_qubit_mapping\scripts\run_hotspot_hw.py", line 519, in run_hotspot
     raise ValueError(
-    ...<2 lines>...
+        f"Refusal: Total estimated runtime ({total_estimate_seconds:.1f} s) exceeds extra_run_cap_s ({extra_run_cap_s:.1f} s)."
     )
-ValueError: Refusal: Newest p1 file (1999-01-01T00:00:00+00:00) is older than current calibration (2025-02-26T14:52:45-05:00). Run measure_p1.py first to characterize today's calibration state.
-[VERIFIED] Refused execution when newest p1 characterization is older than calibration.
+ValueError: Refusal: Total estimated runtime (108.0 s) exceeds extra_run_cap_s (80.0 s).
+[VERIFIED] Refused dry run execution when total estimate exceeds extra_run_cap_s.
 
 ================================================================================
-ALL 7 REFUSAL CONDITIONS RIGOROUSLY DEMONSTRATED AND VERIFIED
+ALL REFUSAL CONDITIONS RIGOROUSLY DEMONSTRATED AND VERIFIED
 ================================================================================

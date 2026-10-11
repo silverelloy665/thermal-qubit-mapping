@@ -1,0 +1,30 @@
+================================================================================
+IBM MARRAKESH CHIP-WIDE READOUT ERROR FAILURE AUDIT
+Source file: p1_ibm_marrakesh_20261009T001839_0530.json (timestamp: 2026-10-09T00:18:39+05:30)
+Total qubits evaluated: 156
+================================================================================
+
+1. CHIP-WIDE READOUT FAILURES (readout_error > 0.20): 5 qubits
+--------------------------------------------------------------------------------
+Qubit    Readout Error    Measured P(1)    Excess P(1)      Flagged (Excess > 0.01) 
+--------------------------------------------------------------------------------
+82       0.4331           0.1824           -0.2507          False                   
+94       0.4058           0.4788           0.0730           True                    
+102      0.3496           0.0017           -0.3479          False                   
+113      0.3416           0.3035           -0.0381          False                   
+130      0.4899           0.5352           0.0453           True                    
+--------------------------------------------------------------------------------
+Chip-wide failure qubit IDs: [82, 94, 102, 113, 130]
+
+2. READOUT FAILURES AMONG FLAGGED HOT QUBITS (excess > 0.01 & ro > 0.20): 2 qubits
+--------------------------------------------------------------------------------
+  - Qubit 94: readout_error = 0.4058, measured_p1 = 0.4788, excess = 0.0730 -> Readout failure, not thermal.
+  - Qubit 130: readout_error = 0.4899, measured_p1 = 0.5352, excess = 0.0453 -> Readout failure, not thermal.
+Flagged failure qubit IDs: [94, 130]
+--------------------------------------------------------------------------------
+
+CONCLUSION:
+  Exactly 5 qubits chip-wide exceed 0.20 readout error: 82, 94, 102, 113, 130.
+  Exactly 2 of these qubits (94, 130) show apparent excess > 0.01 and are categorized
+  as readout failures rather than genuine thermal excitation.
+================================================================================

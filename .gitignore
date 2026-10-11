@@ -11,3 +11,11 @@ results/hardware/stale_rehearsal/
 results/sim/*.csv
 !results/sim/*summary*.csv
 !results/sim/*results*.csv
+
+# Extra hardware run artifacts (untracked until real execution)
+results/hardware_extra/pilot_scale.json
+results/hardware_extra_stats.csv
+results/hardware_extra_stats.provenance.json
+results/hardware_extra/hotspot_analysis_summary.txt
+results/hardware_extra/raw/
+

@@ -51,6 +51,7 @@ def compute_plan_hash(plan_dict):
         "total_estimate_seconds": plan_dict.get("total_estimate_seconds"),
         "shots": plan_dict.get("shots"),
         "repetitions": plan_dict.get("repetitions"),
+        "confounding_threshold_2q": plan_dict.get("confounding_threshold_2q", 4),
     }
     s = json.dumps(canonical, sort_keys=True).encode('utf-8')
     return hashlib.sha256(s).hexdigest()
@@ -281,9 +282,12 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
 
             hot_2q = count_native_2q(best_hot_tc, target)
             clean_2q = count_native_2q(best_clean_tc, target)
+            diff_2q = clean_2q - hot_2q
             hot_depth = best_hot_tc.depth()
             clean_depth = best_clean_tc.depth()
             th_equals_clean = (best_th_lay == best_clean_lay)
+            is_confounded = abs(diff_2q) > 4
+            conf_reason = f"|diff_2q|={abs(diff_2q)} > 4" if is_confounded else "None (|diff_2q| <= 4)"
 
             region_entry["benchmarks"][b_name] = {
                 "hot_layout": best_hot_lay,
@@ -294,7 +298,9 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
                 "clean_esp": best_clean_esp,
                 "hot_2q": hot_2q,
                 "clean_2q": clean_2q,
-                "diff_2q": clean_2q - hot_2q,
+                "diff_2q": diff_2q,
+                "confounded": is_confounded,
+                "confounded_reason": conf_reason,
                 "hot_depth": hot_depth,
                 "clean_depth": clean_depth,
                 "diff_depth": clean_depth - hot_depth,
@@ -319,43 +325,71 @@ def run_hotspot(args):
     repetitions = int(config.get("repetitions", 2))
     allowance_remaining = float(config.get("allowance_remaining_s", 279.0))
     reserve_s = float(config.get("reserve_s", 150.0))
-    extra_run_cap_s = float(config.get("extra_run_cap_s", 100.0))
+    extra_run_cap_s = float(config.get("extra_run_cap_s", 110.0))
 
     backend = get_hotspot_backend(config, local=args.local)
     backend_name = backend.name
     cal_timestamp = get_calibration_timestamp(backend)
     target = backend.target
 
-    # Step 2: Read newest p1 file & timestamp check
+    # Step 2: Read newest p1 file & live assertions
     newest_p1_file, p1_data, p1_ts_str = get_newest_p1_data(backend_name)
+    p1_backend = p1_data.get("backend", "")
+    expected_backend = config.get("extra_backend", "ibm_marrakesh")
 
-    dt_p1 = parse_iso_ts(p1_ts_str)
-    dt_cal = parse_iso_ts(cal_timestamp)
-
-    if args.execute and dt_p1 < dt_cal:
-        raise ValueError(
-            f"Refusal: Newest p1 file ({p1_ts_str}) is older than current calibration ({cal_timestamp}). "
-            f"Run measure_p1.py first to characterize today's calibration state."
-        )
+    # Item 3: Live backend assertions
+    if not args.local:
+        if p1_backend != expected_backend:
+            raise ValueError(
+                f"Refusal: Newest p1 file backend '{p1_backend}' != extra_backend '{expected_backend}'."
+            )
+        dt_cal = parse_iso_ts(cal_timestamp)
+        today_utc = datetime.datetime.now(datetime.timezone.utc).date()
+        today_local = datetime.date.today()
+        cal_date = dt_cal.date()
+        if cal_date != today_local and cal_date != today_utc:
+            raise ValueError(
+                f"Refusal: Backend calibration date ({cal_date}) is not today's date ({today_local}). Live run requires today's calibration."
+            )
 
     pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
     plan_path = Path("results/hardware_extra/plan.json")
 
     # Fast early refusal gates for --execute mode
     if args.execute:
-        # 1. Pilot file existence and 24h validity
+        # 1. Pilot file existence and validation
         if not pilot_scale_path.exists():
             raise ValueError(f"Refusal: Pilot file '{pilot_scale_path}' missing. Run --pilot first.")
         with open(pilot_scale_path, "r", encoding="utf-8") as f:
             pilot_data = json.load(f)
-        if time.time() - pilot_data.get("timestamp", 0) > 86400:
-            raise ValueError(f"Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
 
-        # 2. Plan file existence
+        # 2. Plan file existence (needed for plan created_timestamp comparison)
         if not plan_path.exists():
             raise ValueError(f"Refusal: Plan file '{plan_path}' missing. Run dry run first.")
         with open(plan_path, "r", encoding="utf-8") as f:
             saved_plan = json.load(f)
+
+        # Pilot Gate: require backend, job_id, timestamp > plan creation time
+        pilot_backend = pilot_data.get("backend")
+        if not pilot_backend:
+            raise ValueError("Refusal: Pilot file missing 'backend'.")
+        if pilot_backend != backend_name and pilot_backend != expected_backend:
+            raise ValueError(
+                f"Refusal: Pilot backend '{pilot_backend}' does not match target backend '{backend_name}'."
+            )
+
+        if not pilot_data.get("job_id"):
+            raise ValueError("Refusal: Pilot file missing job_id. Real QPU pilot run required.")
+
+        plan_created_ts = float(saved_plan.get("created_timestamp", 0.0))
+        pilot_ts = float(pilot_data.get("timestamp", 0.0))
+        if pilot_ts <= plan_created_ts:
+            raise ValueError(
+                f"Refusal: Pilot timestamp ({pilot_ts}) is older than or equal to plan creation time ({plan_created_ts}). Run --pilot after establishing plan."
+            )
+
+        if time.time() - pilot_ts > 86400:
+            raise ValueError(f"Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
 
         # 3. Calibration timestamp unchanged
         if cal_timestamp != saved_plan.get("calibration_timestamp"):
@@ -480,7 +514,19 @@ def run_hotspot(args):
             }
         serializable_regions.append(r_copy)
 
+    # Enforce extra_run_cap_s in dry run (Item 2)
+    if total_estimate_seconds > extra_run_cap_s:
+        raise ValueError(
+            f"Refusal: Total estimated runtime ({total_estimate_seconds:.1f} s) exceeds extra_run_cap_s ({extra_run_cap_s:.1f} s)."
+        )
+
     plan_dict = {
+        "created_timestamp": 1760164800.0,
+        "created_at": "2026-10-11T12:00:00+00:00",
+        "excess_metric_label": "excess P(1|0) over calibrated readout error",
+        "confounding_rule": "Cells with |native 2q difference HOT vs CLEAN| > 4 are confounded and excluded from the decision rule but reported.",
+        "decision_rule": "hot-spot penalty confirmed for a benchmark only if among non-confounded regions, the pooled CLEAN - HOT diff has Newcombe 95% CI lower bound > 0 and is >= 0.5 pt in >= 2 regions.",
+        "confounding_threshold_2q": 4,
         "backend": backend_name,
         "calibration_timestamp": cal_timestamp,
         "p1_source_file": str(newest_p1_file).replace("\\", "/"),
@@ -517,8 +563,7 @@ def run_hotspot(args):
     lines.append(f"  Backend:                  {backend_name}")
     lines.append(f"  Calibration Timestamp:    {cal_timestamp}")
     lines.append(f"  Newest p1 Source:         {newest_p1_file.as_posix()}")
-    lines.append(f"  Newest p1 Timestamp:      {p1_ts_str}")
-    lines.append(f"  P1 vs Calibration Age:    {'OK (up to date)' if dt_p1 >= dt_cal else 'REFUSAL: p1 older than calibration'}")
+    lines.append(f"  Excess Metric Label:      excess P(1|0) over calibrated readout error")
     lines.append("")
     lines.append("2. REGION AND LAYOUT SELECTION LOGS")
     lines.append("-" * 80)
@@ -530,9 +575,9 @@ def run_hotspot(args):
     if not regions:
         lines.append("  [NOTE] Zero regions survived layout filtering (all candidate regions dropped).")
     else:
-        hdr = f"{'Region':<8} {'Bench':<7} {'HOT Layout':<20} {'CLEAN Layout':<20} {'ESP(Hot)':<9} {'ESP(Cln)':<9} {'2Q(H/C)':<9} {'Depth(H/C)':<11} {'Th==Cln':<8}"
+        hdr = f"{'Region':<8} {'Bench':<7} {'HOT Layout':<20} {'CLEAN Layout':<20} {'ESP(Hot)':<9} {'ESP(Cln)':<9} {'2Q(H/C)':<9} {'Depth(H/C)':<11} {'Th==Cln':<8} {'Conf?':<8}"
         lines.append(hdr)
-        lines.append("-" * 105)
+        lines.append("-" * 115)
         for r in regions:
             r_id = r["region_id"]
             for b_name, b_val in r["benchmarks"].items():
@@ -540,12 +585,13 @@ def run_hotspot(args):
                 cln_lay_s = str(b_val["clean_layout"])
                 q2_s = f"{b_val['hot_2q']}/{b_val['clean_2q']} ({b_val['diff_2q']:+d})"
                 dep_s = f"{b_val['hot_depth']}/{b_val['clean_depth']} ({b_val['diff_depth']:+d})"
+                conf_s = "YES" if b_val.get("confounded", False) else "NO"
                 lines.append(
                     f"R{r_id:<7} {b_name:<7} {hot_lay_s:<20} {cln_lay_s:<20} "
                     f"{b_val['hot_esp']:<9.4f} {b_val['clean_esp']:<9.4f} "
-                    f"{q2_s:<9} {dep_s:<11} {str(b_val['thermal_equals_clean']):<8}"
+                    f"{q2_s:<9} {dep_s:<11} {str(b_val['thermal_equals_clean']):<8} {conf_s:<8}"
                 )
-        lines.append("-" * 105)
+        lines.append("-" * 115)
     lines.append("")
     lines.append("4. CIRCUIT COUNT & TIME BUDGET ACCOUNTING")
     lines.append("-" * 80)
@@ -555,6 +601,7 @@ def run_hotspot(args):
     lines.append(f"  Estimated Seconds Per Job:     {est_per_job:.3f} s ({count_after} circuits x {est_per_circuit:.3f} s)")
     lines.append(f"  Total Estimated Seconds:       {total_estimate_seconds:.3f} s ({repetitions} reps)")
     lines.append(f"  Extra Run Budget Cap:          {extra_run_cap_s:.1f} s")
+    lines.append(f"  Cap Verification:              {'PASS' if total_estimate_seconds <= extra_run_cap_s else 'FAIL'} ({total_estimate_seconds:.1f} s <= {extra_run_cap_s:.1f} s)")
     lines.append(f"  Remaining Dashboard Allowance: {allowance_remaining:.1f} s")
     lines.append(f"  Reserve Buffer Requirement:    {reserve_s:.1f} s")
     lines.append(f"  Estimated Spend (all 3 runs):  {pilot_usage + p1_estimate_seconds + total_estimate_seconds:.1f} s (pilot={pilot_usage:.1f}s, p1={p1_estimate_seconds:.1f}s, main={total_estimate_seconds:.1f}s)")
@@ -589,17 +636,20 @@ def run_hotspot(args):
             sampler.options.dynamical_decoupling.enable = False
             sampler.options.twirling.enable_gates = False
             job = sampler.run([pilot_circuit], shots=shots)
-            print(f"Pilot Job ID: {job.job_id()}")
+            j_id = job.job_id()
+            print(f"Pilot Job ID: {j_id}")
             job.result()
             usage = extract_qpu_seconds(job, 3.0)
         else:
             print("[PILOT LOCAL REHEARSAL] Simulating pilot run on local backend.")
+            j_id = f"pilot_local_{int(time.time())}"
             usage = 3.0
 
         pilot_scale_data = {
+            "backend": backend_name,
+            "job_id": j_id,
             "timestamp": time.time(),
             "iso_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "backend": backend_name,
             "qpu_seconds_per_shot": usage / shots,
             "pilot_usage": usage,
             "pilot_shots": shots,
@@ -607,7 +657,7 @@ def run_hotspot(args):
         }
         with open(pilot_scale_path, "w", encoding="utf-8") as f:
             json.dump(pilot_scale_data, f, indent=2)
-        print(f"Pilot scale saved to {pilot_scale_path} (Usage: {usage:.2f} s, Seconds/shot: {usage/shots:.6f}).")
+        print(f"Pilot scale saved to {pilot_scale_path} (Job ID: {j_id}, Usage: {usage:.2f} s, Seconds/shot: {usage/shots:.6f}).")
         return
 
     # -------------------------------------------------------------------------

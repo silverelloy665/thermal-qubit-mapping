@@ -1,0 +1,136 @@
+================================================================================
+PRE-REGISTRATION SPECIFICATION: HARDWARE HOT-SPOT STRESS TEST (CHECKPOINT R)
+Commit date: Pre-registered prior to execution of any hardware extra runs
+================================================================================
+
+1. CORE RESEARCH HYPOTHESIS & QUESTION
+--------------------------------------------------------------------------------
+Research Question:
+On a real IBM Heron processor (ibm_marrakesh), does a circuit layout containing a
+qubit with high excess excited-state population perform worse than the best layout
+that avoids it, within the same local spatial region of the device?
+
+Metric Labeling:
+Excess excited-state population is strictly labeled and quantified as:
+  "excess P(1|0) over calibrated readout error"
+defined as:
+  excess_p1 = P(1|0) - readout_error
+where P(1|0) is the ground-state reset failure probability measured by unexcited
+readout, and readout_error is the independently calibrated measurement error.
+
+
+2. HOT QUBIT & CANDIDATE REGION IDENTIFICATION
+--------------------------------------------------------------------------------
+Hot Qubit Inclusion Criteria:
+  - excess P(1|0) > 0.05
+  - readout_error <= 0.20 (to exclude pure readout failures, e.g. qubits 94 and 130)
+
+Top 3 Identified Hot Qubits on ibm_marrakesh:
+  - Region 1 (h = 125): excess P(1|0) = 0.4117, readout_error = 0.0096, measured P(1) = 0.4214
+  - Region 2 (h = 22) : excess P(1|0) = 0.1907, readout_error = 0.0120, measured P(1) = 0.2026
+  - Region 3 (h = 26) : excess P(1|0) = 0.1097, readout_error = 0.0426, measured P(1) = 0.1523
+
+
+3. TOPOLOGICAL NEIGHBORHOOD RADIUS & SUBGRAPH FREEDOM (RADIUS 2 vs RADIUS 4)
+--------------------------------------------------------------------------------
+Graph Radius 2 Limitation (Why Radius 2 Has No CLEAN Subgraph):
+  In the IBM Heron heavy-hex architecture (maximum vertex degree 3, girth 6), any
+  induced subgraph within graph distance <= 2 of a center node h contains at most
+  7 qubits and has tree topology.
+  Removing center node h partitions the remaining vertices into disjoint components
+  of size at most 3.
+  Therefore, it is mathematically impossible for any connected 5-qubit subgraph
+  avoiding h to exist within graph distance <= 2.
+
+Empirical Subgraph Counts at Radius <= 2:
+  - Region 1 (h=125): 7 qubits total | HOT 5q subgraphs = 6  | CLEAN 5q subgraphs = 0
+  - Region 2 (h=22) : 7 qubits total | HOT 5q subgraphs = 6  | CLEAN 5q subgraphs = 0
+  - Region 3 (h=26) : 7 qubits total | HOT 5q subgraphs = 6  | CLEAN 5q subgraphs = 0
+  Result: 0 of 3 regions possess a clean connected 5-qubit layout at radius 2.
+
+Radius <= 4 Expansion (Minimal Connected Neighborhood):
+  Expanding to graph distance <= 4 provides the minimal local neighborhood that
+  admits both HOT and CLEAN connected 5-qubit subgraphs:
+  - Region 1 (h=125): 19 qubits total | HOT 5q subgraphs = 27 | CLEAN 5q subgraphs = 9
+  - Region 2 (h=22) : 16 qubits total | HOT 5q subgraphs = 18 | CLEAN 5q subgraphs = 3
+  - Region 3 (h=26) : 19 qubits total | HOT 5q subgraphs = 22 | CLEAN 5q subgraphs = 10
+
+
+4. COMPILATION & CIRCUIT PROTOCOL
+--------------------------------------------------------------------------------
+Benchmarks:
+  - GHZ-5
+  - Bernstein-Vazirani (BV-5)
+  - Mirror-5
+
+Layout Selection within Each Region:
+  - HOT layout:   Contains hot qubit h; maximizes calibrated ESP among subgraphs containing h.
+  - CLEAN layout: Strictly avoids all hot qubits (excess > 0.05); maximizes calibrated ESP.
+  - Thermal ESP:  Layout chosen by Thermal ESP objective using measured excess P(1|0).
+                  Verified: Thermal ESP layout matches CLEAN layout across all 3 regions.
+
+Compilation Target:
+  Native Heron basis gates: CZ, RZ, SX, X. Optimization level 3 with SAbRE routing (seed=42).
+  Circuit count: 18 total circuits (3 regions x 3 benchmarks x 2 conditions: HOT & CLEAN).
+  Execution repetitions: 2 repetitions of 8,192 shots = 16,384 pooled shots per cell.
+
+
+5. CONFOUNDING EXCLUSION CRITERION & DECISION RULE
+--------------------------------------------------------------------------------
+Confounding Exclusion Criterion:
+  In physical layouts, two-qubit gate count differences can significantly overpower
+  thermal dissipation effects. Therefore, any test cell where:
+    |native 2Q difference HOT vs CLEAN| = |clean_2q - hot_2q| > 4
+  is pre-registered as "CONFOUNDED". Confounded cells are reported in all tables
+  for transparency, but are strictly EXCLUDED from contributing to the confirmation
+  decision rule.
+
+Pre-Transpilation Confounding Classification by Cell:
+  - Region 1:
+      ghz   : hot_2q=4, clean_2q=8  -> diff = +4  (<= 4, VALID / NOT CONFOUNDED)
+      bv    : hot_2q=8, clean_2q=8  -> diff =  0  (<= 4, VALID / NOT CONFOUNDED)
+      mirror: hot_2q=51, clean_2q=50 -> diff = -1 (<= 4, VALID / NOT CONFOUNDED)
+  - Region 2:
+      ghz   : hot_2q=5, clean_2q=4  -> diff = -1  (<= 4, VALID / NOT CONFOUNDED)
+      bv    : hot_2q=2, clean_2q=8  -> diff = +6  (> 4, CONFOUNDED - EXCLUDED)
+      mirror: hot_2q=54, clean_2q=49 -> diff = -5  (> 4, CONFOUNDED - EXCLUDED)
+  - Region 3:
+      ghz   : hot_2q=4, clean_2q=4  -> diff =  0  (<= 4, VALID / NOT CONFOUNDED)
+      bv    : hot_2q=5, clean_2q=8  -> diff = +3  (<= 4, VALID / NOT CONFOUNDED)
+      mirror: hot_2q=54, clean_2q=42 -> diff = -12 (> 4, CONFOUNDED - EXCLUDED)
+
+Pre-Registered Decision Rule:
+  "Hot-spot penalty confirmed" for benchmark B only if:
+  1. Among VALID (non-confounded, |diff_2q| <= 4) regions, the pooled difference:
+       success(CLEAN) - success(HOT)
+     has a Newcombe hybrid score 95% confidence interval lower bound > 0.
+  2. The point estimate difference is >= +0.5 pt.
+  3. These criteria are satisfied in at least 2 valid candidate regions (>= 2 regions).
+
+Regional Feasibility by Benchmark:
+  - GHZ-5   : 3 valid regions (R1, R2, R3). Eligible for confirmation (needs >= 2).
+  - BV-5    : 2 valid regions (R1, R3). Eligible for confirmation (needs both).
+  - Mirror-5: 1 valid region (R1). INELIGIBLE for confirmation (cannot achieve >= 2
+              valid regions due to 2Q gate confounding in R2 and R3).
+
+
+6. TIME BUDGET & EXECUTION SAFETY GATES
+--------------------------------------------------------------------------------
+Allowances & Caps:
+  - Remaining allowance:         279.0 s (manual dashboard, 11 Oct 2026)
+  - Mandatory reserve buffer:    150.0 s (must remain strictly unspent)
+  - Extra run cap (extra_run_cap_s): 110.0 s (conservative 3.0 s/circuit estimate)
+  - Estimated main execution:    108.0 s (18 circuits x 3.0 s x 2 repetitions)
+  - Total projected spend:       115.0 s (pilot=3.0 s, p1=4.0 s, main=108.0 s)
+  - Projected final balance:     164.0 s >= 150.0 s (PASS)
+
+Gated Refusals Enforced:
+  1. Pilot file existence, matching backend, non-empty job_id, and timestamp > plan creation.
+  2. Canonical plan SHA-256 hash integrity.
+  3. Calibration timestamp unchanged since planning.
+  4. Exact match of approved seconds: --approve-seconds 108.
+  5. Remaining allowance - projected spend >= 150.0 s reserve.
+  6. Total estimated seconds <= extra_run_cap_s (110 s).
+  7. For live backend: p1 characterization backend == extra_backend and calibration date == today.
+================================================================================
+
