@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-10-11T06:03:16.346839+00:00",
+  "backend": "fake_marrakesh",
+  "calibration_timestamp": "2025-02-26T14:52:45-05:00",
+  "plan_hash": "70f88e0401cb711cb6e294f04021186432cedb531662f222a167f36edee5ce5e",
+  "is_synthetic": true,
+  "shots_pooled_per_cell": 16384,
+  "repetitions": 2,
+  "decision_rule": "hot-spot penalty confirmed only if pooled CLEAN - HOT diff has CI lower bound > 0 AND is >= 0.5 pt in >= 2 regions",
+  "rows": 9
+}

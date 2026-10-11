@@ -1,0 +1,55 @@
+================================================================================
+PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: STATISTICAL ANALYSIS REPORT
+Analysis Timestamp: 2026-10-11T06:03:16.347048+00:00
+================================================================================
+
+HEADER METHODOLOGICAL DISCLOSURES:
+--------------------------------------------------------------------------------
+  1. Repetitions use identical circuits so CIs cover shot noise only.
+  2. One backend, one calibration day (strict single-epoch calibration isolation).
+  3. Regions chosen by measured excess excited-state population (excess_p1 > 0.05).
+  4. HOT and CLEAN differ in more than the hot qubit (native 2Q count and calibrated ESP differ).
+  5. Evaluation Mode: SYNTHETIC COUNTS (Known-Answer Test)
+
+SUMMARY OF REGIONAL DIFFERENCES IN CIRCUIT PROPERTIES (HOT vs CLEAN):
+--------------------------------------------------------------------------------
+  Region 1 (Hot Qubit: 125, Excess p1: 0.4117, Readout Err: 0.0096):
+    - ghz   : Calibrated ESP HOT=0.9238, CLEAN=0.8905 (diff: -0.0333) | Native 2Q HOT=4, CLEAN=8 (diff: +4) | Depth HOT=16, CLEAN=20 (diff: +4)
+    - bv    : Calibrated ESP HOT=0.8941, CLEAN=0.8985 (diff: +0.0044) | Native 2Q HOT=8, CLEAN=8 (diff: +0) | Depth HOT=20, CLEAN=20 (diff: +0)
+    - mirror: Calibrated ESP HOT=0.6658, CLEAN=0.7174 (diff: +0.0516) | Native 2Q HOT=51, CLEAN=50 (diff: -1) | Depth HOT=116, CLEAN=123 (diff: +7)
+  Region 2 (Hot Qubit: 22, Excess p1: 0.1907, Readout Err: 0.0120):
+    - ghz   : Calibrated ESP HOT=0.9202, CLEAN=0.9400 (diff: +0.0198) | Native 2Q HOT=5, CLEAN=4 (diff: -1) | Depth HOT=17, CLEAN=16 (diff: -1)
+    - bv    : Calibrated ESP HOT=0.9132, CLEAN=0.8954 (diff: -0.0177) | Native 2Q HOT=2, CLEAN=8 (diff: +6) | Depth HOT=14, CLEAN=20 (diff: +6)
+    - mirror: Calibrated ESP HOT=0.6649, CLEAN=0.6573 (diff: -0.0076) | Native 2Q HOT=54, CLEAN=49 (diff: -5) | Depth HOT=126, CLEAN=112 (diff: -14)
+  Region 3 (Hot Qubit: 26, Excess p1: 0.1097, Readout Err: 0.0426):
+    - ghz   : Calibrated ESP HOT=0.8339, CLEAN=0.9313 (diff: +0.0974) | Native 2Q HOT=4, CLEAN=4 (diff: +0) | Depth HOT=16, CLEAN=16 (diff: +0)
+    - bv    : Calibrated ESP HOT=0.7808, CLEAN=0.9186 (diff: +0.1378) | Native 2Q HOT=5, CLEAN=8 (diff: +3) | Depth HOT=17, CLEAN=20 (diff: +3)
+    - mirror: Calibrated ESP HOT=0.4529, CLEAN=0.7397 (diff: +0.2869) | Native 2Q HOT=54, CLEAN=42 (diff: -12) | Depth HOT=126, CLEAN=118 (diff: -8)
+
+PAIRED DIFFERENCE RESULTS TABLE (CLEAN - HOT):
+---------------------------------------------------------------------------------------------------------
+Benchmark Region   Clean %   Hot %     Diff (pts)   95% Newcombe CI      z-stat   p (raw)     p (Holm)    Cell Pass
+---------------------------------------------------------------------------------------------------------
+bv        R1       90.94     89.27     1.666        [+1.020, +2.313]     5.050    <1e-4       <1e-4       True     
+bv        R2       90.71     89.62     1.086        [+0.442, +1.731]     3.302    9.5853e-04  2.8756e-03  True     
+bv        R3       91.15     89.50     1.648        [+1.008, +2.288]     5.046    <1e-4       <1e-4       True     
+ghz       R1       91.97     90.34     1.630        [+1.015, +2.245]     5.196    <1e-4       <1e-4       True     
+ghz       R2       91.62     90.07     1.550        [+0.926, +2.175]     4.865    <1e-4       <1e-4       True     
+ghz       R3       91.72     90.52     1.208        [+0.593, +1.825]     3.845    1.2048e-04  6.0239e-04  True     
+mirror    R1       72.33     71.51     0.818        [-0.155, +1.791]     1.647    9.9495e-02  9.9495e-02  False    
+mirror    R2       72.72     71.15     1.569        [+0.596, +2.541]     3.160    1.5793e-03  3.1586e-03  True     
+mirror    R3       72.90     71.00     1.898        [+0.925, +2.870]     3.824    1.3111e-04  6.0239e-04  True     
+---------------------------------------------------------------------------------------------------------
+
+DECISION RULE VERIFICATION:
+--------------------------------------------------------------------------------
+Pre-registered criterion: 'hot-spot penalty confirmed' for a benchmark only if the
+pooled CLEAN - HOT difference has CI lower bound > 0 AND is >= 0.5 pt in at least 2 regions.
+
+  Benchmark 'ghz   ': CONFIRMED (3/3 regions meet CI low > 0 and diff >= 0.5 pt)
+  Benchmark 'bv    ': CONFIRMED (3/3 regions meet CI low > 0 and diff >= 0.5 pt)
+  Benchmark 'mirror': CONFIRMED (2/3 regions meet CI low > 0 and diff >= 0.5 pt)
+
+================================================================================
+END OF STATISTICAL ANALYSIS
+================================================================================

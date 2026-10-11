@@ -1,0 +1,9 @@
+{
+  "timestamp": 1791698852.347732,
+  "iso_time": "2026-10-11T06:07:32.347732+00:00",
+  "backend": "fake_marrakesh",
+  "qpu_seconds_per_shot": 0.0003662109375,
+  "pilot_usage": 3.0,
+  "pilot_shots": 8192,
+  "circuit_hash": "63f1e88dd84ddaf0-be9f2b038ddab541-826070b3d62a3777-4803a0f3d555ebab"
+}

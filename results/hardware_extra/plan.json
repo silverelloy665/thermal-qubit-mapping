@@ -1,0 +1,418 @@
+{
+  "backend": "fake_marrakesh",
+  "calibration_timestamp": "2025-02-26T14:52:45-05:00",
+  "p1_source_file": "results/hardware/p1_ibm_marrakesh_20261009T001839_0530.json",
+  "p1_timestamp": "2026-10-09T00:18:39+05:30",
+  "circuit_hashes": [
+    "63f1e88dd84ddaf0-be9f2b038ddab541-826070b3d62a3777-4803a0f3d555ebab",
+    "1c9d1d4110dcb190-9072f04580dd2199-f2c3a6e7b21e9643-027f1f9322996d35",
+    "dd0c1b19fc0ffd2f-c0655dad1dd9f2b3-75defc324107c39e-fb0dd7d450561f28",
+    "8bb2dfb5122069bf-9daf0bbe63e974a1-882401a436de927b-3dbfbd8461786630",
+    "017a67c65a47b34b-713a8f30733279e7-80b2b7e55c6f8955-2c7dd4b0dd2224ff",
+    "5f4f2d71303ccb70-a88877056c3c925c-bc9b1c73b288d628-7b628b860b5bd4bc",
+    "865bb1f4f2e4395a-30a346ea3afe9afd-019686a013a7029f-78a6905f915b7088",
+    "5863cb1ac8d79cdf-568a60c519520d77-386abf76e20e2c14-390ced54f04ee4d8",
+    "eb2d7b292d01556a-e60ef5344b36d86f-81d2ef7e6628de27-aabce3b1ac866ff2",
+    "1d6570cfce1d8d2e-9c5723c67d37548f-646c06f66fae6941-da9f8745048d1965",
+    "2931d4fd0a7ca1ed-119490ee009c8dec-4c94cb148e570dd3-d03bcbd2e36b201b",
+    "8cc93bbc8efd6b82-d7764ea5ee6761ee-e549430460b516ac-22436df9a8e10d25",
+    "ec11a942804dbbfa-8d87aa4a40d0edb3-360c4c83c27a66c9-209b360c99f5f456",
+    "88b31f9ddf748b33-f597191be8176ecd-afb585f08604ee21-e67376e041200bcc",
+    "7374eac99d71ba90-a94fee277a347571-2aa40743b6cc1634-8de002008526bbb6",
+    "1bd00f15c33657a8-60c0826e474cc2a1-74900bde88d22551-b70a7c1006c94d0a",
+    "4dec2dcc3d467e56-083cbdd164169084-454723904139851f-70a3fdc9a40a0e3c",
+    "4f3f0837beaaf33f-b8fb7faeb5f47eee-c9c24b4cfe805713-1ff885179992de2c"
+  ],
+  "circuit_count_before": 18,
+  "circuit_count_after": 18,
+  "per_circuit_estimate_seconds": 3.0,
+  "per_job_estimate_seconds": 54.0,
+  "total_estimate_seconds": 108.0,
+  "allowance_remaining_s": 279.0,
+  "reserve_s": 150.0,
+  "extra_run_cap_s": 100.0,
+  "remaining_after_run_s": 164.0,
+  "shots": 8192,
+  "repetitions": 2,
+  "regions": [
+    {
+      "region_id": 1,
+      "hot_qubit": 125,
+      "excess_p1": 0.4117431640625,
+      "readout_error": 0.0096435546875,
+      "measured_p1": 0.42138671875,
+      "distance": 4,
+      "region_qubits": [
+        103,
+        104,
+        105,
+        106,
+        107,
+        117,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        136,
+        137,
+        143,
+        147
+      ],
+      "benchmarks": {
+        "ghz": {
+          "hot_layout": [
+            125,
+            126,
+            127,
+            128,
+            129
+          ],
+          "clean_layout": [
+            126,
+            127,
+            128,
+            129,
+            137
+          ],
+          "thermal_esp_layout": [
+            126,
+            127,
+            128,
+            129,
+            137
+          ],
+          "thermal_equals_clean": true,
+          "hot_esp": 0.9238124797357992,
+          "clean_esp": 0.8905158597577596,
+          "hot_2q": 4,
+          "clean_2q": 8,
+          "diff_2q": 4,
+          "hot_depth": 16,
+          "clean_depth": 20,
+          "diff_depth": 4
+        },
+        "bv": {
+          "hot_layout": [
+            125,
+            126,
+            127,
+            128,
+            137
+          ],
+          "clean_layout": [
+            126,
+            127,
+            128,
+            129,
+            137
+          ],
+          "thermal_esp_layout": [
+            126,
+            127,
+            128,
+            129,
+            137
+          ],
+          "thermal_equals_clean": true,
+          "hot_esp": 0.8940675937503362,
+          "clean_esp": 0.8984666756644384,
+          "hot_2q": 8,
+          "clean_2q": 8,
+          "diff_2q": 0,
+          "hot_depth": 20,
+          "clean_depth": 20,
+          "diff_depth": 0
+        },
+        "mirror": {
+          "hot_layout": [
+            123,
+            124,
+            125,
+            126,
+            136
+          ],
+          "clean_layout": [
+            127,
+            128,
+            129,
+            137,
+            147
+          ],
+          "thermal_esp_layout": [
+            127,
+            128,
+            129,
+            137,
+            147
+          ],
+          "thermal_equals_clean": true,
+          "hot_esp": 0.6658007630448263,
+          "clean_esp": 0.7174091215089153,
+          "hot_2q": 51,
+          "clean_2q": 50,
+          "diff_2q": -1,
+          "hot_depth": 116,
+          "clean_depth": 123,
+          "diff_depth": 7
+        }
+      }
+    },
+    {
+      "region_id": 2,
+      "hot_qubit": 22,
+      "excess_p1": 0.190673828125,
+      "readout_error": 0.011962890625,
+      "measured_p1": 0.20263671875,
+      "distance": 4,
+      "region_qubits": [
+        2,
+        3,
+        4,
+        16,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        36,
+        37,
+        40,
+        41,
+        42
+      ],
+      "benchmarks": {
+        "ghz": {
+          "hot_layout": [
+            21,
+            22,
+            36,
+            41,
+            42
+          ],
+          "clean_layout": [
+            20,
+            21,
+            36,
+            41,
+            42
+          ],
+          "thermal_esp_layout": [
+            20,
+            21,
+            36,
+            41,
+            42
+          ],
+          "thermal_equals_clean": true,
+          "hot_esp": 0.9202425624013141,
+          "clean_esp": 0.940015400657403,
+          "hot_2q": 5,
+          "clean_2q": 4,
+          "diff_2q": -1,
+          "hot_depth": 17,
+          "clean_depth": 16,
+          "diff_depth": -1
+        },
+        "bv": {
+          "hot_layout": [
+            16,
+            20,
+            21,
+            22,
+            23
+          ],
+          "clean_layout": [
+            21,
+            36,
+            40,
+            41,
+            42
+          ],
+          "thermal_esp_layout": [
+            21,
+            36,
+            40,
+            41,
+            42
+          ],
+          "thermal_equals_clean": true,
+          "hot_esp": 0.9131595222369024,
+          "clean_esp": 0.8954252752983339,
+          "hot_2q": 2,
+          "clean_2q": 8,
+          "diff_2q": 6,
+          "hot_depth": 14,
+          "clean_depth": 20,
+          "diff_depth": 6
+        },
+        "mirror": {
+          "hot_layout": [
+            3,
+            16,
+            21,
+            22,
+            23
+          ],
+          "clean_layout": [
+            21,
+            36,
+            40,
+            41,
+            42
+          ],
+          "thermal_esp_layout": [
+            21,
+            36,
+            40,
+            41,
+            42
+          ],
+          "thermal_equals_clean": true,
+          "hot_esp": 0.6648608533602672,
+          "clean_esp": 0.6572671229090422,
+          "hot_2q": 54,
+          "clean_2q": 49,
+          "diff_2q": -5,
+          "hot_depth": 126,
+          "clean_depth": 112,
+          "diff_depth": -14
+        }
+      }
+    },
+    {
+      "region_id": 3,
+      "hot_qubit": 26,
+      "excess_p1": 0.1097412109375,
+      "readout_error": 0.0426025390625,
+      "measured_p1": 0.15234375,
+      "distance": 4,
+      "region_qubits": [
+        6,
+        7,
+        8,
+        16,
+        17,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        37,
+        38,
+        44,
+        45,
+        46
+      ],
+      "benchmarks": {
+        "ghz": {
+          "hot_layout": [
+            26,
+            27,
+            28,
+            29,
+            38
+          ],
+          "clean_layout": [
+            6,
+            7,
+            17,
+            27,
+            28
+          ],
+          "thermal_esp_layout": [
+            6,
+            7,
+            17,
+            27,
+            28
+          ],
+          "thermal_equals_clean": true,
+          "hot_esp": 0.8338705627170694,
+          "clean_esp": 0.9312737412540045,
+          "hot_2q": 4,
+          "clean_2q": 4,
+          "diff_2q": 0,
+          "hot_depth": 16,
+          "clean_depth": 16,
+          "diff_depth": 0
+        },
+        "bv": {
+          "hot_layout": [
+            7,
+            8,
+            17,
+            26,
+            27
+          ],
+          "clean_layout": [
+            6,
+            7,
+            8,
+            17,
+            27
+          ],
+          "thermal_esp_layout": [
+            6,
+            7,
+            8,
+            17,
+            27
+          ],
+          "thermal_equals_clean": true,
+          "hot_esp": 0.7808367469437325,
+          "clean_esp": 0.9186227571619979,
+          "hot_2q": 5,
+          "clean_2q": 8,
+          "diff_2q": 3,
+          "hot_depth": 17,
+          "clean_depth": 20,
+          "diff_depth": 3
+        },
+        "mirror": {
+          "hot_layout": [
+            7,
+            17,
+            25,
+            26,
+            27
+          ],
+          "clean_layout": [
+            6,
+            7,
+            8,
+            17,
+            27
+          ],
+          "thermal_esp_layout": [
+            6,
+            7,
+            8,
+            17,
+            27
+          ],
+          "thermal_equals_clean": true,
+          "hot_esp": 0.45288053788957516,
+          "clean_esp": 0.739739919281283,
+          "hot_2q": 54,
+          "clean_2q": 42,
+          "diff_2q": -12,
+          "hot_depth": 126,
+          "clean_depth": 118,
+          "diff_depth": -8
+        }
+      }
+    }
+  ],
+  "plan_hash": "70f88e0401cb711cb6e294f04021186432cedb531662f222a167f36edee5ce5e"
+}

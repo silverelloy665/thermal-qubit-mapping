@@ -25,3 +25,16 @@ backends:
 thermal:
   # Synthetic temperature profile (in millikelvin)
   default_temp_mK: 15.0
+
+# Hardware Extra Experiment Configuration (Checkpoint Q)
+extra_backend: ibm_marrakesh     # fallback ibm_fez, fail if not in live list
+allowance_remaining_s: 279       # manual, dashboard 11 Oct 2026, 4m39s remain
+reserve_s: 150                   # must stay unspent
+extra_run_cap_s: 100             # main run cap (estimate at 3.0 s/circuit)
+hot_min_excess: 0.05
+max_regions: 3
+benchmarks_extra: [ghz, bv, mirror]
+shots: 8192
+repetitions: 2
+region_distance: 4               # d<=2 has no clean 5q subgraphs on heavy-hex (girth 6); d<=4 provides connected clean subgraphs
+

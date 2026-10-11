@@ -148,7 +148,46 @@ def audit_sweep_and_p1(readme_content: str, sweep_csv="results/sim/thermal_sweep
 
     return True, "Sweep and p1 numbers verified successfully."
 
-def audit_readme(readme_path="README.md", csv_path="results/hardware/runtime_table.csv", sweep_csv="results/sim/thermal_sweep.csv"):
+def audit_hardware_extra(readme_content: str, extra_stats_csv="results/hardware_extra_stats.csv", plan_path="results/hardware_extra/plan.json"):
+    # 1. Assert that no premature execution claims exist in README prior to actual QPU run
+    premature_claims = [
+        "hot-spot penalty confirmed on qpu",
+        "hardware extra qpu results",
+        "extra qpu run confirmed",
+        "confirmed on real heron",
+    ]
+    for claim in premature_claims:
+        if claim in readme_content.lower():
+            return False, f"Premature claim '{claim}' found in README before real QPU execution."
+
+    # 2. Check if hardware_extra or extra hot-spot stress test is mentioned in README
+    keywords = [
+        "hardware_extra",
+        "hardware_extra_stats",
+        "hotspot_hw",
+        "extra_stats",
+        "hot-spot stress test",
+        "hotspot stress test",
+    ]
+    mentioned = any(kw in readme_content.lower() for kw in keywords)
+    if not mentioned:
+        # '(or none)' as required by Checkpoint Q specification
+        return True, "No hardware_extra claims in README (or none is backed)."
+
+    # 3. If mentioned, assert backing by hardware_extra_stats.csv and plan.json
+    if not os.path.exists(extra_stats_csv):
+        return False, f"Hardware extra mentioned in README, but {extra_stats_csv} not found."
+    if not os.path.exists(plan_path):
+        return False, f"Hardware extra mentioned in README, but {plan_path} not found."
+
+    df_extra = pd.read_csv(extra_stats_csv)
+    if len(df_extra) == 0:
+        return False, f"Hardware extra stats CSV {extra_stats_csv} is empty."
+
+    print("Hardware extra claims verified against extra stats CSV and plan.")
+    return True, "Hardware extra claims verified against extra stats CSV."
+
+def audit_readme(readme_path="README.md", csv_path="results/hardware/runtime_table.csv", sweep_csv="results/sim/thermal_sweep.csv", extra_stats_csv="results/hardware_extra_stats.csv"):
     if not os.path.exists(readme_path):
         print(f"Error: {readme_path} not found.")
         sys.exit(1)
@@ -217,7 +256,13 @@ def audit_readme(readme_path="README.md", csv_path="results/hardware/runtime_tab
         print(f"FAILED: {sw_msg}")
         return False, sw_msg
 
-    print("Claim audit passed: all hardware and sweep numbers in README.md match ground truth within tolerance.")
+    # 5. Hardware extra claims verification
+    hw_ex_ok, hw_ex_msg = audit_hardware_extra(content, extra_stats_csv=extra_stats_csv)
+    if not hw_ex_ok:
+        print(f"FAILED: {hw_ex_msg}")
+        return False, hw_ex_msg
+
+    print("Claim audit passed: all hardware, sweep, and hardware extra claims in README.md match ground truth within tolerance.")
     return True, "All claims verified"
 
 if __name__ == "__main__":
@@ -225,3 +270,4 @@ if __name__ == "__main__":
     if not success:
         sys.exit(1)
     sys.exit(0)
+

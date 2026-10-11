@@ -457,6 +457,103 @@ def test_target_qubit_properties_exist():
             assert prop.t1 is not None and prop.t1 > 0, f"Qubit {q} on {dev.name} missing valid T1"
             assert prop.t2 is not None and prop.t2 > 0, f"Qubit {q} on {dev.name} missing valid T2"
 
+def test_hotspot_gates_and_isa():
+    """Verify that all hotspot planned layouts use Heron native gates and coupling."""
+    import json
+    from qiskit_ibm_runtime.fake_provider import FakeMarrakesh
+    from qiskit import transpile
+    from src.benchmarks.circuits import get_ghz, get_bv_n, get_mirror
+
+    plan_path = Path("results/hardware_extra/plan.json")
+    assert plan_path.exists(), "results/hardware_extra/plan.json must exist"
+    with open(plan_path, "r", encoding="utf-8") as f:
+        plan = json.load(f)
+
+    backend = FakeMarrakesh()
+    circ_map = {"ghz": get_ghz(5), "bv": get_bv_n(5), "mirror": get_mirror(5)}
+
+    allowed_ops = {"cz", "rz", "sx", "x", "measure", "barrier", "delay", "id"}
+    coupling_edges = set(backend.coupling_map.get_edges())
+
+    for r in plan["regions"]:
+        for b_name, b_val in r["benchmarks"].items():
+            for cond in ["hot_layout", "clean_layout"]:
+                layout = b_val[cond]
+                assert len(layout) == 5
+                qc = circ_map[b_name]
+                tc = transpile(qc, backend, initial_layout=layout, optimization_level=3, seed_transpiler=42)
+                for inst in tc.data:
+                    assert inst.operation.name in allowed_ops, f"Unsupported op {inst.operation.name}"
+                    if len(inst.qubits) == 2:
+                        q0 = tc.find_bit(inst.qubits[0]).index
+                        q1 = tc.find_bit(inst.qubits[1]).index
+                        assert (q0, q1) in coupling_edges or (q1, q0) in coupling_edges, f"Invalid 2Q edge ({q0}, {q1})"
+
+def test_hotspot_plan_hash_stability():
+    """Verify that the pre-registered plan hash is deterministic and canonical."""
+    import json
+    from scripts.run_hotspot_hw import compute_plan_hash
+
+    plan_path = Path("results/hardware_extra/plan.json")
+    with open(plan_path, "r", encoding="utf-8") as f:
+        plan = json.load(f)
+
+    computed_h = compute_plan_hash(plan)
+    assert computed_h == plan["plan_hash"]
+    assert computed_h == "70f88e0401cb711cb6e294f04021186432cedb531662f222a167f36edee5ce5e"
+
+def test_hotspot_synthetic_analysis_known_answer():
+    """Verify known-answer statistical calculations for hotspot stress test."""
+    from scripts.analyze_hotspot import newcombe_diff_ci, two_prop_z_test, wilson_score_interval
+
+    # Equal proportions -> diff = 0, CI symmetric about 0, z = 0, p = 1.0
+    diff, ci_l, ci_u = newcombe_diff_ci(8000, 16384, 8000, 16384)
+    assert math.isclose(diff, 0.0, abs_tol=1e-12)
+    assert math.isclose(ci_l, -ci_u, abs_tol=1e-6)
+    z, p = two_prop_z_test(8000, 16384, 8000, 16384)
+    assert math.isclose(z, 0.0, abs_tol=1e-12)
+    assert math.isclose(p, 1.0, abs_tol=1e-12)
+
+    # Distinct proportions (CLEAN > HOT by 200 shots out of 16384)
+    diff2, ci_l2, ci_u2 = newcombe_diff_ci(15000, 16384, 14800, 16384)
+    assert diff2 > 0
+    assert ci_l2 > 0
+    z2, p2 = two_prop_z_test(15000, 16384, 14800, 16384)
+    assert z2 > 3.0
+    assert p2 < 1e-3
+
+def test_hotspot_refusal_behavior(monkeypatch, tmp_path):
+    """Verify that execution is refused when safety conditions are violated."""
+    import argparse
+    from scripts.run_hotspot_hw import run_hotspot
+
+    # 1. Missing pilot file refusal
+    pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
+    bak_path = tmp_path / "pilot_bak.json"
+    if pilot_scale_path.exists():
+        import shutil
+        shutil.copy(pilot_scale_path, bak_path)
+        pilot_scale_path.unlink()
+
+    try:
+        args_missing_pilot = argparse.Namespace(
+            local=True, execute=True, approve_seconds=108, dry_run=False, pilot=False, strict_d2=False
+        )
+        with pytest.raises(ValueError, match="missing. Run --pilot first"):
+            run_hotspot(args_missing_pilot)
+    finally:
+        if bak_path.exists():
+            import shutil
+            shutil.copy(bak_path, pilot_scale_path)
+
+    # 2. Wrong approve-seconds refusal
+    args_wrong_sec = argparse.Namespace(
+        local=True, execute=True, approve_seconds=999, dry_run=False, pilot=False, strict_d2=False
+    )
+    with pytest.raises(ValueError, match="does not match required"):
+        run_hotspot(args_wrong_sec)
+
+
 
 
 

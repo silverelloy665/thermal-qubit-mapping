@@ -23,7 +23,11 @@ def check_secrets():
                 try:
                     with open(filepath, 'r', encoding='utf-8') as file:
                         for i, line in enumerate(file):
-                            if token_re.search(line):
+                            for m_tok in token_re.finditer(line):
+                                tok = m_tok.group(0)
+                                # Ignore pure hex hash strings (SHA-256, git commit hashes >= 32 chars)
+                                if re.fullmatch(r'[0-9a-fA-F]{32,64}', tok):
+                                    continue
                                 errors.append(f"Token-like string in {filepath}:{i+1}")
                             m = qiskit_re.search(line)
                             if m and len(m.group(1).strip()) > 0:
