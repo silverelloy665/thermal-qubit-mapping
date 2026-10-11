@@ -197,6 +197,54 @@ def audit_hardware_extra(readme_content: str, extra_stats_csv="results/hardware_
     if len(df_extra) == 0:
         return False, f"Hardware extra stats CSV {extra_stats_csv} is empty."
 
+    # 4. Require every number it quotes to be recomputed from hardware_extra_stats.csv (diff, CI, region)
+    extra_section = ""
+    lines = readme_content.splitlines()
+    in_section = False
+    for line in lines:
+        if any(kw in line.lower() for kw in keywords):
+            in_section = True
+        elif in_section and line.startswith("# ") and not any(kw in line.lower() for kw in keywords):
+            break
+        if in_section:
+            extra_section += line + "\n"
+
+    if not extra_section:
+        extra_section = readme_content
+
+    valid_regions = set(df_extra["region_id"].astype(int).tolist())
+    gt_diffs = df_extra["diff_pts"].tolist()
+    gt_ci_lows = df_extra["ci_low_pts"].tolist()
+    gt_ci_highs = df_extra["ci_high_pts"].tolist()
+
+    # Verify quoted regions
+    region_matches = re.findall(r'\b(?:R|Region\s*)(\d+)\b', extra_section, re.IGNORECASE)
+    for r_str in region_matches:
+        r_val = int(r_str)
+        if r_val not in valid_regions:
+            return False, f"Quoted region R{r_val} in extra experiment section not found in {extra_stats_csv}."
+
+    # Verify quoted diffs in pts
+    diff_matches = re.findall(r'([+-]?\d+(?:\.\d+)?)\s*(?:pt|pts|percentage points)', extra_section, re.IGNORECASE)
+    for d_str in diff_matches:
+        d_val = float(d_str)
+        matched = any(abs(d_val - gt_d) <= 0.05 for gt_d in gt_diffs)
+        if not matched:
+            return False, f"Quoted difference {d_str} pt in extra experiment section does not match any recomputed diff in {extra_stats_csv}."
+
+    # Verify quoted CIs
+    ci_matches = re.findall(r'\[\s*([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)\s*\]', extra_section)
+    for low_str, high_str in ci_matches:
+        low_val = float(low_str)
+        high_val = float(high_str)
+        matched = False
+        for gt_l, gt_h in zip(gt_ci_lows, gt_ci_highs):
+            if abs(low_val - gt_l) <= 0.05 and abs(high_val - gt_h) <= 0.05:
+                matched = True
+                break
+        if not matched:
+            return False, f"Quoted CI [{low_str}, {high_str}] in extra experiment section does not match any recomputed CI in {extra_stats_csv}."
+
     print("Hardware extra claims verified against extra stats CSV and plan.")
     return True, "Hardware extra claims verified against extra stats CSV."
 

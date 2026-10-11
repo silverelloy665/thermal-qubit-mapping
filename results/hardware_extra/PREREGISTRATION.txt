@@ -1,5 +1,5 @@
 ================================================================================
-PRE-REGISTRATION SPECIFICATION: HARDWARE HOT-SPOT STRESS TEST (CHECKPOINT R)
+PRE-REGISTRATION SPECIFICATION: HARDWARE HOT-SPOT STRESS TEST (CHECKPOINT S)
 Commit date: Pre-registered prior to execution of any hardware extra runs
 ================================================================================
 
@@ -33,14 +33,17 @@ Top 3 Identified Hot Qubits on ibm_marrakesh:
 
 3. TOPOLOGICAL NEIGHBORHOOD RADIUS & SUBGRAPH FREEDOM (RADIUS 2 vs RADIUS 4)
 --------------------------------------------------------------------------------
-Graph Radius 2 Limitation (Why Radius 2 Has No CLEAN Subgraph):
-  In the IBM Heron heavy-hex architecture (maximum vertex degree 3, girth 6), any
-  induced subgraph within graph distance <= 2 of a center node h contains at most
-  7 qubits and has tree topology.
-  Removing center node h partitions the remaining vertices into disjoint components
-  of size at most 3.
-  Therefore, it is mathematically impossible for any connected 5-qubit subgraph
-  avoiding h to exist within graph distance <= 2.
+Graph Radius Formulation:
+Let G = (V, E) be the hardware coupling graph with geodesic graph distance metric
+d_G(u, v). The closed radius-R topological ball centered at candidate hot qubit h is:
+  B_R(h) = { v in V | d_G(v, h) <= R }
+
+Radius R = 2 Limitation (Why Radius 2 Has No CLEAN Subgraph):
+In the IBM Heron heavy-hex architecture, vertex degrees satisfy deg(v) <= 3.
+Removing center node h partitions B_2(h) \ {h} into disconnected components C_i
+with max_i |C_i| <= 3 < 5. Therefore:
+  { S subset (B_2(h) \ {h}) | |S| = 5 and G[S] is connected } = empty_set
+It is mathematically impossible for any connected 5-qubit subgraph avoiding h to exist.
 
 Empirical Subgraph Counts at Radius <= 2:
   - Region 1 (h=125): 7 qubits total | HOT 5q subgraphs = 6  | CLEAN 5q subgraphs = 0
@@ -48,9 +51,11 @@ Empirical Subgraph Counts at Radius <= 2:
   - Region 3 (h=26) : 7 qubits total | HOT 5q subgraphs = 6  | CLEAN 5q subgraphs = 0
   Result: 0 of 3 regions possess a clean connected 5-qubit layout at radius 2.
 
-Radius <= 4 Expansion (Minimal Connected Neighborhood):
-  Expanding to graph distance <= 4 provides the minimal local neighborhood that
-  admits both HOT and CLEAN connected 5-qubit subgraphs:
+Radius R <= 4 Expansion (Minimal Connected Neighborhood):
+Expanding to R = 4 provides the minimal local topological ball that admits both HOT
+and CLEAN connected 5-qubit subgraphs:
+  { S subset (B_4(h) \ {h}) | |S| = 5 and G[S] is connected } != empty_set
+Empirical counts at radius <= 4:
   - Region 1 (h=125): 19 qubits total | HOT 5q subgraphs = 27 | CLEAN 5q subgraphs = 9
   - Region 2 (h=22) : 16 qubits total | HOT 5q subgraphs = 18 | CLEAN 5q subgraphs = 3
   - Region 3 (h=26) : 19 qubits total | HOT 5q subgraphs = 22 | CLEAN 5q subgraphs = 10
@@ -77,15 +82,18 @@ Compilation Target:
 
 5. CONFOUNDING EXCLUSION CRITERION & DECISION RULE
 --------------------------------------------------------------------------------
-Confounding Exclusion Criterion:
-  In physical layouts, two-qubit gate count differences can significantly overpower
-  thermal dissipation effects. Therefore, any test cell where:
-    |native 2Q difference HOT vs CLEAN| = |clean_2q - hot_2q| > 4
-  is pre-registered as "CONFOUNDED". Confounded cells are reported in all tables
-  for transparency, but are strictly EXCLUDED from contributing to the confirmation
-  decision rule.
+Confounding Exclusion Formula:
+For candidate region r and benchmark B, let hot_2q(r, B) and clean_2q(r, B) denote
+the native two-qubit gate counts of the transpiled circuits.
+  Delta_2Q(r, B) = clean_2q(r, B) - hot_2q(r, B)
+  Cell is CONFOUNDED             <==> |Delta_2Q(r, B)| > 4
+  Cell is VALID (non-confounded) <==> |Delta_2Q(r, B)| <= 4
 
-Pre-Transpilation Confounding Classification by Cell:
+Confounded cells are reported in all tables for transparency, but are strictly
+EXCLUDED from contributing to the confirmation decision rule.
+
+Pre-Transpilation Confounding Classification Table:
+[PROVISIONAL TABLE: from fake_marrakesh dry run, replaced by the final dry run]
   - Region 1:
       ghz   : hot_2q=4, clean_2q=8  -> diff = +4  (<= 4, VALID / NOT CONFOUNDED)
       bv    : hot_2q=8, clean_2q=8  -> diff =  0  (<= 4, VALID / NOT CONFOUNDED)
@@ -99,15 +107,24 @@ Pre-Transpilation Confounding Classification by Cell:
       bv    : hot_2q=5, clean_2q=8  -> diff = +3  (<= 4, VALID / NOT CONFOUNDED)
       mirror: hot_2q=54, clean_2q=42 -> diff = -12 (> 4, CONFOUNDED - EXCLUDED)
 
-Pre-Registered Decision Rule:
-  "Hot-spot penalty confirmed" for benchmark B only if:
-  1. Among VALID (non-confounded, |diff_2q| <= 4) regions, the pooled difference:
-       success(CLEAN) - success(HOT)
-     has a Newcombe hybrid score 95% confidence interval lower bound > 0.
-  2. The point estimate difference is >= +0.5 pt.
-  3. These criteria are satisfied in at least 2 valid candidate regions (>= 2 regions).
+Pre-Registered Decision Rule (Per-Region and Benchmark Level):
+For region r and benchmark B, let:
+  diff(r, B) = success(CLEAN_{r, B}) - success(HOT_{r, B})
+and [CI_low(r, B), CI_high(r, B)] be the 95% Newcombe hybrid score confidence interval.
 
-Regional Feasibility by Benchmark:
+Per-Region Decision Rule:
+A candidate region r counts for benchmark B if and only if:
+  1. Region is VALID: |Delta_2Q(r, B)| <= 4
+  2. CI_low(r, B) > 0
+  3. diff(r, B) >= +0.5 pt (+0.0050)
+Formula:
+  Region r counts for B <==> (|Delta_2Q(r, B)| <= 4) AND (CI_low(r, B) > 0) AND (diff(r, B) >= +0.0050)
+
+Benchmark Confirmation Rule:
+Benchmark B is confirmed if and only if at least 2 valid regions count:
+  Confirmed(B) <==> sum_{r in Regions} I(Region r counts for B) >= 2
+
+Provisional Feasibility by Benchmark:
   - GHZ-5   : 3 valid regions (R1, R2, R3). Eligible for confirmation (needs >= 2).
   - BV-5    : 2 valid regions (R1, R3). Eligible for confirmation (needs both).
   - Mirror-5: 1 valid region (R1). INELIGIBLE for confirmation (cannot achieve >= 2
@@ -125,7 +142,8 @@ Allowances & Caps:
   - Projected final balance:     164.0 s >= 150.0 s (PASS)
 
 Gated Refusals Enforced:
-  1. Pilot file existence, matching backend, non-empty job_id, and timestamp > plan creation.
+  1. Pilot file existence, same backend as extra_backend, non-empty job_id, within 24 h,
+     and timestamp after backend calibration timestamp.
   2. Canonical plan SHA-256 hash integrity.
   3. Calibration timestamp unchanged since planning.
   4. Exact match of approved seconds: --approve-seconds 108.
@@ -133,4 +151,3 @@ Gated Refusals Enforced:
   6. Total estimated seconds <= extra_run_cap_s (110 s).
   7. For live backend: p1 characterization backend == extra_backend and calibration date == today.
 ================================================================================
-

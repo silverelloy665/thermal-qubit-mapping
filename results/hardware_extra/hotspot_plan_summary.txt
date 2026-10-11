@@ -1,6 +1,6 @@
 ================================================================================
 PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN
-Timestamp: 2026-10-11T06:43:08.347921+00:00
+Timestamp: 2026-10-11T07:34:28.877709+00:00
 ================================================================================
 
 1. BACKEND & CALIBRATION METADATA
@@ -14,17 +14,17 @@ Timestamp: 2026-10-11T06:43:08.347921+00:00
 --------------------------------------------------------------------------------
   Region 1 Candidate (h=125, excess=0.4117, ro=0.0096):
     - Distance <= 2: size=7 qubits, HOT 5q subgraphs=6, CLEAN 5q subgraphs=0.
-      * Note: Heavy-hex lattice has girth 6 and degree <= 3; removing center node h partitions radius-2 tree into components of size <= 3.
+      * Note: Heavy-hex lattice has degree <= 3; removing center node h partitions radius-2 tree into components of size <= 3.
       * Result at distance <= 2: No connected 5-qubit CLEAN subgraph exists without h.
     - Local Expanded Neighborhood (d<=4): size=19 qubits, HOT 5q subgraphs=27, CLEAN 5q subgraphs=9.
   Region 2 Candidate (h=22, excess=0.1907, ro=0.0120):
     - Distance <= 2: size=7 qubits, HOT 5q subgraphs=6, CLEAN 5q subgraphs=0.
-      * Note: Heavy-hex lattice has girth 6 and degree <= 3; removing center node h partitions radius-2 tree into components of size <= 3.
+      * Note: Heavy-hex lattice has degree <= 3; removing center node h partitions radius-2 tree into components of size <= 3.
       * Result at distance <= 2: No connected 5-qubit CLEAN subgraph exists without h.
     - Local Expanded Neighborhood (d<=4): size=16 qubits, HOT 5q subgraphs=18, CLEAN 5q subgraphs=3.
   Region 3 Candidate (h=26, excess=0.1097, ro=0.0426):
     - Distance <= 2: size=7 qubits, HOT 5q subgraphs=6, CLEAN 5q subgraphs=0.
-      * Note: Heavy-hex lattice has girth 6 and degree <= 3; removing center node h partitions radius-2 tree into components of size <= 3.
+      * Note: Heavy-hex lattice has degree <= 3; removing center node h partitions radius-2 tree into components of size <= 3.
       * Result at distance <= 2: No connected 5-qubit CLEAN subgraph exists without h.
     - Local Expanded Neighborhood (d<=4): size=19 qubits, HOT 5q subgraphs=22, CLEAN 5q subgraphs=10.
 
@@ -61,5 +61,5 @@ R3       mirror  [7, 17, 25, 26, 27]  [6, 7, 8, 17, 27]    0.4529    0.7397    5
 5. PLAN INTEGRITY & ARTIFACTS
 --------------------------------------------------------------------------------
   Plan Path:                     results/hardware_extra/plan.json
-  Plan Hash:                     d046831b5a754c1ba5d22d2c60fd771747c40425fc717d263b5f7d2bd8343848
+  Plan Hash:                     d046831b5a754c1b-a5d22d2c60fd7717-47c40425fc717d26-3b5f7d2bd8343848
 ================================================================================

@@ -1,0 +1,16 @@
+================================================================================
+HARDWARE EXTRA CONFOUNDING CLASSIFICATION TABLE (CHECKPOINT S)
+Backend: fake_marrakesh | Calibration: 2025-02-26T14:52:45-05:00
+================================================================================
+Region   Bench    hot_2q    clean_2q   diff_2q   Conf?   Reason
+--------------------------------------------------------------------------------
+R1       ghz      4         8          +4        NO      None (|diff_2q| <= 4)
+R1       bv       8         8          +0        NO      None (|diff_2q| <= 4)
+R1       mirror   51        50         -1        NO      None (|diff_2q| <= 4)
+R2       ghz      5         4          -1        NO      None (|diff_2q| <= 4)
+R2       bv       2         8          +6        YES     |diff_2q|=6 > 4
+R2       mirror   54        49         -5        YES     |diff_2q|=5 > 4
+R3       ghz      4         4          +0        NO      None (|diff_2q| <= 4)
+R3       bv       5         8          +3        NO      None (|diff_2q| <= 4)
+R3       mirror   54        42         -12       YES     |diff_2q|=12 > 4
+--------------------------------------------------------------------------------

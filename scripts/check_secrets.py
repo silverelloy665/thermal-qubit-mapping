@@ -3,7 +3,18 @@ import sys
 import re
 import subprocess
 
-def check_secrets():
+def is_hex_exempt(filepath):
+    norm = filepath.replace('\\', '/')
+    filename = os.path.basename(norm)
+    if filename in ('plan.json', 'raw.sha256'):
+        return True
+    if filename.endswith('.provenance.json'):
+        return True
+    if re.search(r'results/hardware[^/]*/plan\.json$', norm):
+        return True
+    return False
+
+def check_secrets(root_dir='.'):
     errors = []
     
     # 1. Regex checks
@@ -12,7 +23,7 @@ def check_secrets():
     
     exts = ('.py', '.yaml', '.md', '.json', '.csv', '.ipynb', '.txt', '.toml')
     
-    for root, dirs, files in os.walk('.'):
+    for root, dirs, files in os.walk(root_dir):
         if '.venv' in dirs: dirs.remove('.venv')
         if '.git' in dirs: dirs.remove('.git')
         
@@ -21,12 +32,12 @@ def check_secrets():
                 filepath = os.path.join(root, f)
                 if 'check_secrets.py' in filepath: continue
                 try:
-                    with open(filepath, 'r', encoding='utf-8') as file:
+                    with open(filepath, 'r', encoding='utf-8', errors='ignore') as file:
                         for i, line in enumerate(file):
                             for m_tok in token_re.finditer(line):
                                 tok = m_tok.group(0)
-                                # Ignore pure hex hash strings (SHA-256, git commit hashes >= 32 chars)
-                                if re.fullmatch(r'[0-9a-fA-F]{32,64}', tok):
+                                # Restrict hex exemption to plan.json, raw.sha256, *.provenance.json, results/hardware*/plan.json
+                                if is_hex_exempt(filepath) and re.fullmatch(r'[0-9a-fA-F]{32,64}', tok):
                                     continue
                                 errors.append(f"Token-like string in {filepath}:{i+1}")
                             m = qiskit_re.search(line)
@@ -48,10 +59,13 @@ def check_secrets():
     if errors:
         print("Secrets check failed:")
         for e in errors: print(f" - {e}")
-        sys.exit(1)
+        return False, errors
     else:
         print("No secrets found. .env is safe.")
-        sys.exit(0)
+        return True, []
 
 if __name__ == '__main__':
-    check_secrets()
+    ok, _ = check_secrets()
+    if not ok:
+        sys.exit(1)
+    sys.exit(0)

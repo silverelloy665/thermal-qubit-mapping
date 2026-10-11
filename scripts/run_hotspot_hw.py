@@ -218,7 +218,7 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
         log_messages.append(f"Region {idx} Candidate (h={h}, excess={exc_val:.4f}, ro={ro_val:.4f}):")
         log_messages.append(f"  - Distance <= 2: size={len(reg_d2)} qubits, HOT 5q subgraphs={len(hot_sgs_d2)}, CLEAN 5q subgraphs={len(clean_sgs_d2)}.")
         if len(clean_sgs_d2) == 0:
-            log_messages.append(f"    * Note: Heavy-hex lattice has girth 6 and degree <= 3; removing center node h partitions radius-2 tree into components of size <= 3.")
+            log_messages.append(f"    * Note: Heavy-hex lattice has degree <= 3; removing center node h partitions radius-2 tree into components of size <= 3.")
             log_messages.append(f"    * Result at distance <= 2: No connected 5-qubit CLEAN subgraph exists without h.")
 
         if strict_d2:
@@ -319,6 +319,32 @@ def parse_iso_ts(ts_str):
     except Exception:
         return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
 
+def write_confounding_table(plan_dict, out_path="results/hardware_extra/confounding_table.txt"):
+    lines = []
+    lines.append("=" * 80)
+    lines.append("HARDWARE EXTRA CONFOUNDING CLASSIFICATION TABLE (CHECKPOINT S)")
+    lines.append(f"Backend: {plan_dict.get('backend')} | Calibration: {plan_dict.get('calibration_timestamp')}")
+    lines.append("=" * 80)
+    hdr = f"{'Region':<8} {'Bench':<8} {'hot_2q':<9} {'clean_2q':<10} {'diff_2q':<9} {'Conf?':<7} {'Reason'}"
+    lines.append(hdr)
+    lines.append("-" * 80)
+    for r in plan_dict.get("regions", []):
+        r_id = r["region_id"]
+        for b_name, b_val in r.get("benchmarks", {}).items():
+            diff = b_val.get("diff_2q", 0)
+            diff_str = f"{diff:+d}"
+            conf_str = "YES" if b_val.get("confounded", False) else "NO"
+            reason_str = b_val.get("confounded_reason", "None")
+            lines.append(
+                f"R{r_id:<7} {b_name:<8} {b_val.get('hot_2q', 0):<9} {b_val.get('clean_2q', 0):<10} {diff_str:<9} {conf_str:<7} {reason_str}"
+            )
+    lines.append("-" * 80)
+    table_text = "\n".join(lines) + "\n"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(table_text)
+    return table_text
+
 def run_hotspot(args):
     config = load_config()
     shots = int(config.get("shots", 8192))
@@ -369,26 +395,33 @@ def run_hotspot(args):
         with open(plan_path, "r", encoding="utf-8") as f:
             saved_plan = json.load(f)
 
-        # Pilot Gate: require backend, job_id, timestamp > plan creation time
+        # Pilot Gate: same backend as extra_backend, non-empty job_id, within 24 h, timestamp after backend calibration
         pilot_backend = pilot_data.get("backend")
         if not pilot_backend:
             raise ValueError("Refusal: Pilot file missing 'backend'.")
-        if pilot_backend != backend_name and pilot_backend != expected_backend:
-            raise ValueError(
-                f"Refusal: Pilot backend '{pilot_backend}' does not match target backend '{backend_name}'."
-            )
+        if not args.local:
+            if pilot_backend != expected_backend:
+                raise ValueError(
+                    f"Refusal: Pilot backend '{pilot_backend}' does not match extra_backend '{expected_backend}'."
+                )
+        else:
+            if pilot_backend != backend_name and pilot_backend != expected_backend:
+                raise ValueError(
+                    f"Refusal: Pilot backend '{pilot_backend}' does not match target backend '{backend_name}'."
+                )
 
-        if not pilot_data.get("job_id"):
+        if not pilot_data.get("job_id") or not str(pilot_data.get("job_id")).strip():
             raise ValueError("Refusal: Pilot file missing job_id. Real QPU pilot run required.")
 
-        plan_created_ts = float(saved_plan.get("created_timestamp", 0.0))
         pilot_ts = float(pilot_data.get("timestamp", 0.0))
-        if pilot_ts <= plan_created_ts:
+        cal_dt = parse_iso_ts(cal_timestamp)
+        cal_epoch = cal_dt.timestamp()
+        if pilot_ts <= cal_epoch:
             raise ValueError(
-                f"Refusal: Pilot timestamp ({pilot_ts}) is older than or equal to plan creation time ({plan_created_ts}). Run --pilot after establishing plan."
+                f"Refusal: Pilot timestamp ({pilot_ts}) is older than or equal to backend calibration timestamp ({cal_epoch} / {cal_timestamp}). Run --pilot after backend calibration."
             )
 
-        if time.time() - pilot_ts > 86400:
+        if abs(time.time() - pilot_ts) > 86400:
             raise ValueError(f"Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
 
         # 3. Calibration timestamp unchanged
@@ -550,6 +583,7 @@ def run_hotspot(args):
     if not args.execute and not args.pilot:
         with open(plan_path, "w", encoding="utf-8") as f:
             json.dump(plan_dict, f, indent=2)
+        write_confounding_table(plan_dict)
 
     # Generate printable summary report
     lines = []
@@ -611,7 +645,8 @@ def run_hotspot(args):
     lines.append("5. PLAN INTEGRITY & ARTIFACTS")
     lines.append("-" * 80)
     lines.append(f"  Plan Path:                     {plan_path.as_posix()}")
-    lines.append(f"  Plan Hash:                     {plan_dict['plan_hash']}")
+    hyphenated_plan_hash = "-".join(plan_dict['plan_hash'][i:i+16] for i in range(0, len(plan_dict['plan_hash']), 16))
+    lines.append(f"  Plan Hash:                     {hyphenated_plan_hash}")
     lines.append("=" * 80)
 
     summary_text = "\n".join(lines) + "\n"

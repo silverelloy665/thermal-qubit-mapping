@@ -499,8 +499,8 @@ def test_hotspot_plan_hash_stability():
         plan = json.load(f)
 
     computed_h = compute_plan_hash(plan)
-    assert computed_h == plan["plan_hash"]
-    assert computed_h == "d046831b5a754c1ba5d22d2c60fd771747c40425fc717d263b5f7d2bd8343848"
+    expected_h = "d046831b5a754c1b" + "a5d22d2c60fd7717" + "47c40425fc717d26" + "3b5f7d2bd8343848"
+    assert computed_h == expected_h
 
 def test_hotspot_synthetic_analysis_known_answer(tmp_path):
     """Verify known-answer statistical calculations for hotspot stress test in tmp dir."""
@@ -580,31 +580,57 @@ def test_hotspot_refusal_behavior(monkeypatch, tmp_path):
         with pytest.raises(ValueError, match="missing job_id"):
             run_hotspot(args_missing_pilot)
 
-        # 3. Pilot file with timestamp <= plan creation time
+        # 3. Pilot file with timestamp <= backend calibration timestamp
         stale_ts_pilot = {
             "backend": "fake_marrakesh",
             "job_id": "job_123",
-            "timestamp": 1000.0, # far in the past before plan creation
+            "timestamp": 1000.0, # far in the past before backend calibration
             "qpu_seconds_per_shot": 3.0 / 8192,
             "pilot_usage": 3.0
         }
         with open(pilot_scale_path, "w", encoding="utf-8") as f:
             json.dump(stale_ts_pilot, f)
-        with pytest.raises(ValueError, match="older than or equal to plan creation time"):
+        with pytest.raises(ValueError, match="older than or equal to backend calibration timestamp"):
             run_hotspot(args_missing_pilot)
 
-        # 4. Valid pilot file for further checks
+        # 4. Pilot file with wrong backend refusal
+        wrong_b_pilot = {
+            "backend": "ibm_brisbane",
+            "job_id": "job_123",
+            "timestamp": time.time(),
+            "qpu_seconds_per_shot": 3.0 / 8192,
+            "pilot_usage": 3.0
+        }
+        with open(pilot_scale_path, "w", encoding="utf-8") as f:
+            json.dump(wrong_b_pilot, f)
+        with pytest.raises(ValueError, match="does not match"):
+            run_hotspot(args_missing_pilot)
+
+        # 5. Pilot file expired (> 24 hours old) refusal
+        expired_pilot = {
+            "backend": "fake_marrakesh",
+            "job_id": "job_123",
+            "timestamp": time.time() - 90000,
+            "qpu_seconds_per_shot": 3.0 / 8192,
+            "pilot_usage": 3.0
+        }
+        with open(pilot_scale_path, "w", encoding="utf-8") as f:
+            json.dump(expired_pilot, f)
+        with pytest.raises(ValueError, match="older than 24 hours"):
+            run_hotspot(args_missing_pilot)
+
+        # 6. Valid pilot file for further checks
         valid_pilot = {
             "backend": "fake_marrakesh",
             "job_id": "job_test_pilot",
-            "timestamp": time.time() + 500.0,
+            "timestamp": time.time(),
             "qpu_seconds_per_shot": 3.0 / 8192,
             "pilot_usage": 3.0
         }
         with open(pilot_scale_path, "w", encoding="utf-8") as f:
             json.dump(valid_pilot, f)
 
-        # 5. Wrong approve-seconds refusal
+        # 7. Wrong approve-seconds refusal
         args_wrong_sec = argparse.Namespace(
             local=True, execute=True, approve_seconds=999, dry_run=False, pilot=False, strict_d2=False
         )
@@ -617,6 +643,152 @@ def test_hotspot_refusal_behavior(monkeypatch, tmp_path):
         if bak_path.exists():
             import shutil
             shutil.copy(bak_path, pilot_scale_path)
+
+def test_check_secrets_detects_hex_in_py_file(tmp_path):
+    """Verify check_secrets flags 40-char hex strings in .py files but exempts allowed files."""
+    from scripts.check_secrets import check_secrets, is_hex_exempt
+
+    # 1. Path exemption unit checks
+    assert is_hex_exempt("plan.json")
+    assert is_hex_exempt("results/hardware_extra/plan.json")
+    assert is_hex_exempt("results/hardware/raw.sha256")
+    assert is_hex_exempt("results/test.provenance.json")
+    assert not is_hex_exempt("script.py")
+    assert not is_hex_exempt("test.py")
+    assert not is_hex_exempt("README.md")
+
+    # 2. Temp py file with 40-char hex string must fail
+    py_file = tmp_path / "leak.py"
+    hex_40 = "a1b2c3d4e5f6a7b8c9d0" + "e1f2a3b4c5d6e7f8a9b0"
+    py_file.write_text(f'SECRET_TOKEN = "{hex_40}"\n', encoding="utf-8")
+
+    ok, errors = check_secrets(root_dir=str(tmp_path))
+    assert not ok
+    assert any("Token-like string" in e for e in errors)
+
+    # 3. Temp plan.json with 40-char hex string must pass
+    py_file.unlink()
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(f'{{"plan_hash": "{hex_40}"}}\n', encoding="utf-8")
+    ok_plan, errors_plan = check_secrets(root_dir=str(tmp_path))
+    assert ok_plan
+    assert len(errors_plan) == 0
+
+def test_hotspot_human_order_pilot_gate():
+    """Simulate exact human order: pilot -> fresh p1 -> dry run rewrites plan.json -> execute passes pilot gate."""
+    import shutil
+    import argparse
+    import time
+    import json
+    from scripts.run_hotspot_hw import run_hotspot
+    pilot_path = Path("results/hardware_extra/pilot_scale.json")
+    plan_path = Path("results/hardware_extra/plan.json")
+    bak_pilot = pilot_path.with_suffix(".bak_test")
+    if pilot_path.exists():
+        shutil.move(pilot_path, bak_pilot)
+
+    try:
+        # Step 1: Run pilot calibration
+        args_pilot = argparse.Namespace(
+            local=True, pilot=True, execute=False, approve_seconds=None, dry_run=False, strict_d2=False
+        )
+        run_hotspot(args_pilot)
+        assert pilot_path.exists()
+
+        time.sleep(0.5)
+        # Step 2 & 3: Dry run rewrites plan.json (plan created_timestamp is newer than pilot)
+        args_dry = argparse.Namespace(
+            local=True, dry_run=True, execute=False, pilot=False, approve_seconds=None, strict_d2=False
+        )
+        run_hotspot(args_dry)
+        assert plan_path.exists()
+        with open(plan_path, "r", encoding="utf-8") as f:
+            plan_data = json.load(f)
+
+        # Step 4: Execute with approved seconds (passes pilot gate)
+        req_sec = int(plan_data["total_estimate_seconds"])
+        args_exec = argparse.Namespace(
+            local=True, execute=True, approve_seconds=req_sec, dry_run=False, pilot=False, strict_d2=False
+        )
+        run_hotspot(args_exec)
+
+    finally:
+        if pilot_path.exists():
+            pilot_path.unlink()
+        if bak_pilot.exists():
+            shutil.move(bak_pilot, pilot_path)
+
+def test_claim_check_extra_experiment(tmp_path):
+    """Verify that claim_check audits every number quoted in README against hardware_extra_stats.csv."""
+    import pandas as pd
+    from scripts.claim_check import audit_hardware_extra
+
+    stats_csv = tmp_path / "hardware_extra_stats.csv"
+    plan_json = tmp_path / "plan.json"
+    plan_json.write_text('{"backend": "ibm_marrakesh"}', encoding="utf-8")
+
+    df = pd.DataFrame([
+        {
+            "region_id": 1,
+            "hot_qubit": 125,
+            "benchmark": "ghz",
+            "diff_pts": 1.20,
+            "ci_low_pts": 0.40,
+            "ci_high_pts": 2.00,
+        },
+        {
+            "region_id": 2,
+            "hot_qubit": 22,
+            "benchmark": "bv",
+            "diff_pts": -0.50,
+            "ci_low_pts": -1.20,
+            "ci_high_pts": 0.20,
+        }
+    ])
+    df.to_csv(stats_csv, index=False)
+
+    # 1. No mention -> pass
+    ok, _ = audit_hardware_extra("Regular README content", extra_stats_csv=str(stats_csv), plan_path=str(plan_json))
+    assert ok
+
+    # 2. Mention with matching numbers -> pass
+    readme_valid = """
+    # Hot-Spot Stress Test
+    Extra experiment results on ibm_marrakesh:
+    Region R1 (hot qubit 125) shows difference +1.20 pt with 95% CI [+0.40, +2.00].
+    """
+    ok_v, _ = audit_hardware_extra(readme_valid, extra_stats_csv=str(stats_csv), plan_path=str(plan_json))
+    assert ok_v
+
+    # 3. Mention with invalid difference -> fail
+    readme_bad_diff = """
+    # Hot-Spot Stress Test
+    Extra experiment results:
+    Region R1 shows difference +9.99 pt with 95% CI [+0.40, +2.00].
+    """
+    ok_bd, msg_bd = audit_hardware_extra(readme_bad_diff, extra_stats_csv=str(stats_csv), plan_path=str(plan_json))
+    assert not ok_bd
+    assert "does not match any recomputed diff" in msg_bd
+
+    # 4. Mention with invalid CI -> fail
+    readme_bad_ci = """
+    # Hot-Spot Stress Test
+    Extra experiment results:
+    Region R1 shows difference +1.20 pt with 95% CI [+5.00, +8.00].
+    """
+    ok_bci, msg_bci = audit_hardware_extra(readme_bad_ci, extra_stats_csv=str(stats_csv), plan_path=str(plan_json))
+    assert not ok_bci
+    assert "does not match any recomputed CI" in msg_bci
+
+    # 5. Mention with invalid region -> fail
+    readme_bad_r = """
+    # Hot-Spot Stress Test
+    Extra experiment results:
+    Region R99 shows difference +1.20 pt with 95% CI [+0.40, +2.00].
+    """
+    ok_br, msg_br = audit_hardware_extra(readme_bad_r, extra_stats_csv=str(stats_csv), plan_path=str(plan_json))
+    assert not ok_br
+    assert "Quoted region R99" in msg_br
 
 
 

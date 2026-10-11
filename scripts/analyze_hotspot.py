@@ -193,6 +193,9 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
             ci_low_pts = ci_low * 100.0
             ci_high_pts = ci_high * 100.0
 
+            is_confounded = bool(b_meta.get("confounded", False))
+            conf_reason = str(b_meta.get("confounded_reason", "None"))
+
             rows.append({
                 "region_id": r_id,
                 "hot_qubit": h_q,
@@ -211,8 +214,8 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
                 "z_stat": z_stat,
                 "p_value_raw": p_val,
                 "diff_2q": b_meta.get("diff_2q", 0),
-                "confounded": abs(b_meta.get("diff_2q", 0)) > 4,
-                "confounded_reason": f"|diff_2q|={abs(b_meta.get('diff_2q', 0))} > 4" if abs(b_meta.get("diff_2q", 0)) > 4 else "None",
+                "confounded": is_confounded,
+                "confounded_reason": conf_reason,
                 "diff_depth": b_meta.get("diff_depth", 0),
                 "hot_2q": b_meta.get("hot_2q", 0),
                 "clean_2q": b_meta.get("clean_2q", 0),
@@ -222,7 +225,7 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
                 "esp_hot": b_meta.get("hot_esp", 0.0),
                 "diff_esp": b_meta.get("clean_esp", 0.0) - b_meta.get("hot_esp", 0.0),
                 "thermal_equals_clean": b_meta.get("thermal_equals_clean", True),
-                "penalty_confirmed_cell": (ci_low_pts > 0.0 and diff_pts >= 0.5 and abs(b_meta.get("diff_2q", 0)) <= 4)
+                "penalty_confirmed_cell": (ci_low_pts > 0.0 and diff_pts >= 0.5 and not is_confounded)
             })
 
     df_stats = pd.DataFrame(rows)
@@ -257,7 +260,7 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
         "is_synthetic": is_synthetic,
         "shots_pooled_per_cell": 16384,
         "repetitions": 2,
-        "decision_rule": "hot-spot penalty confirmed only if pooled CLEAN - HOT diff has CI lower bound > 0 AND is >= 0.5 pt in >= 2 regions",
+        "decision_rule": "region counts if own CLEAN-HOT Newcombe CI low > 0 and diff >= 0.5 pt; benchmark confirmed if >= 2 valid (non-confounded) regions count",
         "rows": len(df_stats)
     }
     with open(prov_path, "w", encoding="utf-8") as f:
@@ -309,11 +312,10 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
     lines.append("")
 
     # Decision Rule Evaluation
-    lines.append("DECISION RULE VERIFICATION (AMENDED IN CHECKPOINT R):")
+    lines.append("DECISION RULE VERIFICATION (AMENDED IN CHECKPOINT S):")
     lines.append("--------------------------------------------------------------------------------")
-    lines.append("Pre-registered criterion: 'hot-spot penalty confirmed' for a benchmark only if among")
-    lines.append("VALID (non-confounded, |diff_2q| <= 4) candidate regions, the pooled CLEAN - HOT")
-    lines.append("difference has CI lower bound > 0 AND is >= 0.5 pt in at least 2 regions.")
+    lines.append("Pre-registered criterion: a region counts if its own CLEAN - HOT Newcombe CI lower bound > 0")
+    lines.append("and difference >= 0.5 pt. The benchmark is confirmed if >= 2 valid (non-confounded) regions count.")
     lines.append("Cells with |native 2q difference HOT vs CLEAN| > 4 are designated as 'confounded'")
     lines.append("and excluded from contributing to the confirmation threshold, but reported.")
     lines.append("")
