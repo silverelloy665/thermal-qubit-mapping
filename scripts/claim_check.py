@@ -412,6 +412,30 @@ def audit_analysis_exposure_and_esp(readme_content: str, analysis_dir="results/a
         if "offline target" not in content_lower or "not evidence" not in content_lower:
             return False, "README mention of prefilter_check must state it used an offline target and is not evidence."
 
+    # Rule 6: No quoting p-values or CIs for per-benchmark ESP correlations
+    benchmarks_pattern = r"\b(?:ghz|bv|mirror|qft)\b"
+    for line in readme_content.splitlines():
+        line_l = line.lower()
+        if re.search(benchmarks_pattern, line_l):
+            if re.search(r"(?:r|rho)\s*=", line_l):
+                if re.search(r"\bp\s*=\s*[+-]?\d+", line_l) or re.search(r"\bp\s*<", line_l):
+                    return False, f"Forbidden per-benchmark p-value quoted in line: '{line.strip()}'"
+                if re.search(r"\[\s*[+-]?\d+", line_l):
+                    return False, f"Forbidden per-benchmark CI quoted in line: '{line.strip()}'"
+
+    # Rule 7: Fail if README states Mirror has 4 distinct circuits (must state 5 distinct circuits, 17 total)
+    if re.search(r"mirror[^\.\n]*4\s*distinct\s*circuits", content_lower):
+        return False, "README states Mirror has 4 distinct circuits (Mirror has 5 distinct circuits, 17 total)."
+    if "16 distinct circuits" in content_lower or "16 distinct compiled circuits" in content_lower:
+        return False, "README states 16 distinct circuits (must be 17 distinct circuits: Mirror 5, others 4)."
+    if re.search(r"4\s*distinct\s*circuits\s*each", content_lower):
+        return False, "README states 4 distinct circuits each (Mirror has 5 distinct circuits, 17 total)."
+
+    # Rule 8: Require that retraction of the T3 branch proposal is noted if mentioned
+    if "branch" in content_lower and ("proposal" in content_lower or "branch-only" in content_lower):
+        if "retract" not in content_lower:
+            return False, "Checkpoint T3 branch proposal is mentioned without explicitly noting its retraction."
+
     return True, "Analysis claims verified."
 
 

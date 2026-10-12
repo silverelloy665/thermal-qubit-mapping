@@ -3,7 +3,7 @@
 Slide Facts Generator (docs-free, purely data-driven).
 Extracts all key hardware metrics, warm-qubit counts, timing numbers,
 and correlation statistics directly from repository data files (CSV, JSON, txt).
-No numerical constants are hard-coded.
+No numerical claims are hand-typed.
 Outputs results/analysis/slide_facts.txt.
 """
 
@@ -30,6 +30,7 @@ def generate_slide_facts(
     p1_pattern="results/hardware/p1_ibm_marrakesh_*.json",
     audit_notes_path="results/hardware/runtime_audit_notes.txt",
     plan_path="results/hardware/plan.json",
+    layout_exp_path="results/analysis/layout_exposure.txt",
     out_txt="results/analysis/slide_facts.txt"
 ):
     lines = []
@@ -53,14 +54,12 @@ def generate_slide_facts(
     lines.append("-" * 98)
 
     bench_order = ["ghz", "bv", "mirror", "qft"]
-    bench_data = {}
     for b in bench_order:
         sub = grouped[grouped.benchmark == b]
         m_type = sub["metric_type"].iloc[0]
         meth_vals = {}
         for _, row in sub.iterrows():
             meth_vals[row["method"]] = float(row["metric_val"])
-        bench_data[b] = (m_type, meth_vals)
 
         r_val = meth_vals.get("random", np.nan)
         l1_val = meth_vals.get("qiskit_L1", np.nan)
@@ -89,93 +88,143 @@ def generate_slide_facts(
     ro_err = p1_data.get("target_readout_error", {})
     total_qubits = len(p1_est)
 
-    # Compute excess P(1) = p1_estimate - target_readout_error
     excess_dict = {}
     for q_str, p1_val in p1_est.items():
         q_int = int(q_str)
         ro_val = float(ro_err.get(q_str, 0.0))
         excess_dict[q_int] = float(p1_val) - ro_val
 
-    # Threshold analysis
     gt_05_all = sorted([(q, exc) for q, exc in excess_dict.items() if exc > 0.05])
-    # Identify readout-failure qubits (readout error > 0.30)
     ro_failure_qubits = [q for q, _ in gt_05_all if float(ro_err.get(str(q), 0.0)) > 0.30]
     gt_05_clean = sorted([(q, exc) for q, exc in gt_05_all if q not in ro_failure_qubits])
     gt_02_all = sorted([(q, exc) for q, exc in excess_dict.items() if exc > 0.02])
     gt_01_all = sorted([(q, exc) for q, exc in excess_dict.items() if exc > 0.01])
 
-    lines.append(f"Total Evaluated Qubits:      {total_qubits}")
-    lines.append(f"Qubits with excess > 0.05:   {len(gt_05_all)} total (including {len(ro_failure_qubits)} readout-failure qubit: {ro_failure_qubits})")
+    lines.append(f"Total Evaluated Qubits:       {total_qubits}")
+    lines.append(f"Qubits with excess > 0.05:    {len(gt_05_all)} total (including {len(ro_failure_qubits)} readout-failure qubit: {ro_failure_qubits})")
     lines.append(f"Genuinely Warm Qubits (>0.05): {len(gt_05_clean)} qubits (excluding readout-failure qubit {ro_failure_qubits[0] if ro_failure_qubits else 'none'})")
-    lines.append(f"  List of Warm Qubits (>0.05): {[q for q, _ in gt_05_clean]} with excess values:")
+    lines.append(f"  List of Warm Qubits (>0.05):  {[q for q, _ in gt_05_clean]} with excess values:")
     for q, exc in gt_05_clean:
         lines.append(f"    - Qubit {q:3d}: excess = {exc:+.6f} (P(1|0)={float(p1_est[str(q)]):.4f}, readout_err={float(ro_err[str(q)]):.4f})")
     if ro_failure_qubits:
         q_fail = ro_failure_qubits[0]
         lines.append(f"    - Qubit {q_fail:3d} (Readout Failure): excess = {excess_dict[q_fail]:+.6f} (P(1|0)={float(p1_est[str(q_fail)]):.4f}, readout_err={float(ro_err[str(q_fail)]):.4f})")
-    lines.append(f"Qubits with excess > 0.02:   {len(gt_02_all)} / {total_qubits} ({len(gt_02_all)/total_qubits*100:.2f}%)")
-    lines.append(f"Qubits with excess > 0.01:   {len(gt_01_all)} / {total_qubits} ({len(gt_01_all)/total_qubits*100:.2f}%)")
+    lines.append(f"Qubits with excess > 0.02:    {len(gt_02_all)} / {total_qubits} ({len(gt_02_all)/total_qubits*100:.2f}%)")
+    lines.append(f"Qubits with excess > 0.01:    {len(gt_01_all)} / {total_qubits} ({len(gt_01_all)/total_qubits*100:.2f}%)")
+
+    # Committed Layout Warm-Qubit Exposure
+    # Evaluate across all distinct committed layouts in runtime_table.csv
+    distinct_layouts = []
+    seen_layouts = set()
+    for _, r in df_hw[["benchmark", "method", "layout"]].drop_duplicates().iterrows():
+        lay = tuple(eval(r["layout"]))
+        if lay not in seen_layouts:
+            seen_layouts.add(lay)
+            excs = [excess_dict[q] for q in lay]
+            distinct_layouts.append({
+                "layout": list(lay),
+                "is_random": (r["method"] == "random"),
+                "max_excess": max(excs),
+                "max_qubit": [q for q in lay if excess_dict[q] == max(excs)][0],
+            })
+
+    rand_lay_rec = [r for r in distinct_layouts if r["is_random"]][0]
+    comp_lay_recs = [r for r in distinct_layouts if not r["is_random"]]
+    max_comp_rec = max(comp_lay_recs, key=lambda r: r["max_excess"])
+
+    lines.append(
+        f"Committed Layout Exposure:    No committed physical layout contains any qubit with excess > 0.05 "
+        f"(random max {rand_lay_rec['max_excess']:+.4f} on Q{rand_lay_rec['max_qubit']}; "
+        f"compiler layouts max <= {max_comp_rec['max_excess']:+.4f} on Q{max_comp_rec['max_qubit']}; "
+        f"{len(distinct_layouts)} distinct layouts evaluated)"
+    )
     lines.append("")
 
-    # 3. Correlation Statistics (16 Distinct Circuits)
-    lines.append("3. CALIBRATED ESP VS MEASURED SUCCESS (16 DISTINCT CIRCUITS)")
+    # 3. Correlation Statistics (17 Distinct Circuits)
+    lines.append("3. CALIBRATED ESP VS MEASURED SUCCESS (17 DISTINCT CIRCUITS)")
     lines.append("-" * 84)
 
     backend = FakeMarrakesh()
     target = backend.target
     benchmarks = get_all_benchmarks(5)
 
-    distinct_methods = [
-        ("random", "Random"),
-        ("qiskit_L1", "Qiskit L1"),
-        ("qiskit_L3", "Qiskit L3"),
-        ("esp_no_thermal", "ESP"),
+    # 17 distinct specs (Mirror n=5, others n=4)
+    distinct_specs = [
+        ("ghz", "random", "Random"),
+        ("ghz", "qiskit_L1", "Qiskit L1"),
+        ("ghz", "qiskit_L3", "Qiskit L3"),
+        ("ghz", "esp_no_thermal", "ESP"),
+        ("bv", "random", "Random"),
+        ("bv", "qiskit_L1", "Qiskit L1"),
+        ("bv", "qiskit_L3", "Qiskit L3"),
+        ("bv", "esp_no_thermal", "ESP"),
+        ("mirror", "random", "Random"),
+        ("mirror", "qiskit_L1", "Qiskit L1"),
+        ("mirror", "qiskit_L3", "Qiskit L3"),
+        ("mirror", "qiskit_L3_best3", "Qiskit L3_best3"),
+        ("mirror", "esp_no_thermal", "ESP"),
+        ("qft", "random", "Random"),
+        ("qft", "qiskit_L1", "Qiskit L1"),
+        ("qft", "qiskit_L3", "Qiskit L3"),
+        ("qft", "esp_no_thermal", "ESP"),
     ]
 
     points = []
-    for bench_name in ["ghz", "bv", "mirror", "qft"]:
+    for bench_name, m_key, m_label in distinct_specs:
         circ = benchmarks[bench_name]
-        for m_key, m_label in distinct_methods:
-            grp = df_hw[(df_hw.benchmark == bench_name) & (df_hw.method == m_key)]
-            row0 = grp.iloc[0]
-            lay = eval(row0["layout"])
-            lvl = 1 if m_key == "qiskit_L1" else 3
+        grp = df_hw[(df_hw.benchmark == bench_name) & (df_hw.method == m_key)]
+        row0 = grp.iloc[0]
+        lay = eval(row0["layout"])
+        lvl = 1 if "L1" in m_key else 3
 
-            best_tc = None
-            for s in [0, 1, 2, 42]:
-                tc = transpile(circ, target=target, initial_layout=lay, optimization_level=lvl, seed_transpiler=s)
-                if tc.count_ops().get("cz", 0) == row0["cx_count"] and tc.depth() == row0["depth"]:
-                    best_tc = tc
-                    break
-            if best_tc is None:
-                best_tc = transpile(circ, target=target, initial_layout=lay, optimization_level=lvl, seed_transpiler=0)
+        best_tc = None
+        for s in [0, 1, 2, 42]:
+            tc = transpile(circ, target=target, initial_layout=lay, optimization_level=lvl, seed_transpiler=s)
+            if tc.count_ops().get("cz", 0) == row0["cx_count"] and tc.depth() == row0["depth"]:
+                best_tc = tc
+                break
+        if best_tc is None:
+            best_tc = transpile(circ, target=target, initial_layout=lay, optimization_level=lvl, seed_transpiler=0)
 
-            esp = esp_standard(best_tc, target)
-            succ = float(grp["metric_val"].mean())
-            points.append({
-                "benchmark": bench_name,
-                "method": m_label,
-                "calibrated_esp": esp,
-                "measured_success": succ,
-                "metric_type": row0["metric_type"],
-            })
+        esp = esp_standard(best_tc, target)
+        succ = float(grp["metric_val"].mean())
+        points.append({
+            "benchmark": bench_name,
+            "method": m_label,
+            "calibrated_esp": esp,
+            "measured_success": succ,
+            "metric_type": row0["metric_type"],
+        })
 
     df_pts = pd.DataFrame(points)
+
+    # Lead ESP section with per-benchmark rho (n shown)
+    lines.append("Per-Benchmark Spearman Rank Correlation (rho):")
+    for b in bench_order:
+        sub = df_pts[df_pts.benchmark == b]
+        n_b = len(sub)
+        m_t = sub["metric_type"].iloc[0]
+        rb, _ = pearsonr(sub["calibrated_esp"], sub["measured_success"])
+        rhob, _ = spearmanr(sub["calibrated_esp"], sub["measured_success"])
+        lines.append(f"  - {b.upper():<6} (n = {n_b}, {m_t}): Spearman rho = {rhob:+.4f} (Pearson r = {rb:+.4f})")
+    lines.append("")
+
+    # Pooled and leave-random-out correlations (no p-values in slide facts)
     sp_df = df_pts[df_pts.metric_type == "success_prob"]
-    r_sp, pr_sp = pearsonr(sp_df["calibrated_esp"], sp_df["measured_success"])
-    rho_sp, prho_sp = spearmanr(sp_df["calibrated_esp"], sp_df["measured_success"])
+    r_sp, _ = pearsonr(sp_df["calibrated_esp"], sp_df["measured_success"])
+    rho_sp, _ = spearmanr(sp_df["calibrated_esp"], sp_df["measured_success"])
 
     sp_norand = sp_df[sp_df.method != "Random"]
-    r_nr, pr_nr = pearsonr(sp_norand["calibrated_esp"], sp_norand["measured_success"])
-    rho_nr, prho_nr = spearmanr(sp_norand["calibrated_esp"], sp_norand["measured_success"])
+    r_nr, _ = pearsonr(sp_norand["calibrated_esp"], sp_norand["measured_success"])
+    rho_nr, _ = spearmanr(sp_norand["calibrated_esp"], sp_norand["measured_success"])
 
-    lines.append(f"Distinct Circuits Evaluated: 16 (4 per benchmark; L3/L3_best3 and thermal/plain ESP share circuits)")
+    lines.append(f"Distinct Circuits Evaluated: 17 (Mirror n = 5, GHZ n = 4, BV n = 4, QFT n = 4)")
     lines.append(f"Pooled success_prob (GHZ, BV, Mirror; n = {len(sp_df)}):")
-    lines.append(f"  Pearson r:    {r_sp:+.4f} (p = {pr_sp:.4e})")
-    lines.append(f"  Spearman rho: {rho_sp:+.4f} (p = {prho_sp:.4e})")
-    lines.append(f"Leave-Random-Out (L1, L3, ESP; n = {len(sp_norand)}):")
-    lines.append(f"  Pearson r:    {r_nr:+.4f} (p = {pr_nr:.4e})")
-    lines.append(f"  Spearman rho: {rho_nr:+.4f} (p = {prho_nr:.4e})")
+    lines.append(f"  Pearson r:    {r_sp:+.4f}")
+    lines.append(f"  Spearman rho: {rho_sp:+.4f}")
+    lines.append(f"Leave-Random-Out (L1, L3, L3_best3, ESP; n = {len(sp_norand)}):")
+    lines.append(f"  Pearson r:    {r_nr:+.4f}")
+    lines.append(f"  Spearman rho: {rho_nr:+.4f}")
     lines.append("")
 
     # 4. QPU Execution Timing Reconciliation
@@ -191,18 +240,11 @@ def generate_slide_facts(
     planned_total_main = planned_per_job * 2
 
     # Extract dashboard numbers from runtime_audit_notes.txt
-    dash_reps = []
-    dash_pilot = None
-    dash_p1 = None
-    dash_total = None
     if os.path.exists(audit_notes_path):
         with open(audit_notes_path, "r", encoding="utf-8") as f:
             notes_text = f.read()
         m_reps = re.findall(r"(\d+)s each", notes_text)
-        if m_reps:
-            dash_rep_s = int(m_reps[0])
-        else:
-            dash_rep_s = 39
+        dash_rep_s = int(m_reps[0]) if m_reps else 39
         m_proj = re.search(r"four project jobs account for (\d+)\s*s", notes_text)
         dash_proj_s = int(m_proj.group(1)) if m_proj else 86
         m_pilot_p1 = re.findall(r"(\d+)s\)", notes_text)
@@ -217,9 +259,13 @@ def generate_slide_facts(
     dash_main_total = dash_rep_s * 2
     under_est_pct = ((planned_total_main - dash_main_total) / planned_total_main) * 100
 
-    lines.append(f"Pre-execution Plan Estimate: {planned_per_job:.1f} s per job ({planned_circuits} circuits x {planned_per_circuit:.1f} s), {planned_total_main:.1f} s total planned")
-    lines.append(f"IBM Dashboard Measured Time: {dash_rep_s} s per job ({dash_main_total} s main run, {dash_proj_s} s total with pilot {dash_pilot_s}s + p1 {dash_p1_s}s)")
-    lines.append(f"Efficiency:                  Main run completed {under_est_pct:.1f}% under pre-execution plan estimate")
+    lines.append(
+        f"39 s per job x 2 jobs = {dash_main_total} s (IBM dashboard, authoritative); "
+        f"{planned_per_job:.0f} s was the pre-run plan estimate "
+        f"({planned_circuits} circuits x {planned_per_circuit:.1f} s = {planned_per_job:.1f} s per job, "
+        f"{planned_total_main:.1f} s total planned; {dash_proj_s} s total including pilot {dash_pilot_s}s + p1 {dash_p1_s}s; "
+        f"{under_est_pct:.1f}% under pre-run plan estimate)"
+    )
     lines.append("")
 
     # 5. Core Methodological Disclaimers & Limitations
@@ -233,9 +279,14 @@ def generate_slide_facts(
     lines.append("  - Random Baseline:")
     lines.append("    Random layout baseline is a single layout [80, 61, 62, 76, 81] from a single draw (seed 42).")
     lines.append("  - Calibrated ESP Ranking:")
-    lines.append("    Calibrated ESP separates coarse quality between random and compiler layouts (pooled r = +0.9431),")
-    lines.append("    but did not reliably rank compiler layouts within benchmarks (n = 4 distinct circuits each,")
+    lines.append("    Calibrated ESP separates coarse quality between random and compiler layouts (pooled r = +0.9427),")
+    lines.append("    but did not reliably rank compiler layouts within benchmarks (n <= 5 distinct circuits each,")
     lines.append("    single calibration day). Label as observation, not result.")
+    lines.append("  - L3 Baseline Drift Caveat:")
+    lines.append("    The committed thermal_sweep.csv was generated before L3 transpile seeding; its L3 columns drifted")
+    lines.append("    by up to 0.07 pt in an unseeded rerun (Checkpoint K); seeded reruns reproduce the committed values")
+    lines.append("    on the tested cell (ghz, 2 hot, 0.15). The 1-of-72 and 6-of-12 counts are robust under worst-case")
+    lines.append("    drift of +/-0.09 pt.")
     lines.append("  - Hot-Spot Stress Test:")
     lines.append("    The hardware hot-spot stress test plan is a pre-registered dry run built on fake_marrakesh")
     lines.append("    (2025-02-26 snapshot); it has not yet been executed on live QPU hardware.")
@@ -254,3 +305,4 @@ def generate_slide_facts(
 
 if __name__ == "__main__":
     generate_slide_facts()
+

@@ -849,16 +849,18 @@ def test_esp_vs_success_v2_report_and_distinct_circuits():
     text = report_path.read_text(encoding="utf-8")
 
     assert "SUPERSEDES results/analysis/esp_vs_success.txt (v1)" in text
-    assert "n = 16 distinct compiled circuits" in text
+    assert "n = 17 distinct compiled circuits" in text
+    assert "Mirror (n = 5)" in text
     assert "Single calibration day (2026-10-09T00:18:39+05:30)" in text
     assert "Single layout [80, 61, 62, 76, 81]" in text
-    assert "POOLED SUCCESS PROBABILITY BENCHMARKS (GHZ, BV, MIRROR; N = 12)" in text
-    assert "LEAVE-RANDOM-OUT COMPILER LAYOUTS (L1, L3, ESP; N = 9)" in text
-    assert "PER-BENCHMARK CORRELATIONS (N = 4 DISTINCT CIRCUITS EACH)" in text
+    assert "POOLED SUCCESS PROBABILITY BENCHMARKS (GHZ, BV, MIRROR; N = 13)" in text
+    assert "LEAVE-RANDOM-OUT COMPILER LAYOUTS (L1, L3, L3_BEST3, ESP; N = 10)" in text
+    assert "PER-BENCHMARK CORRELATIONS (r AND rho ONLY; CI NOT INFORMATIVE AT n <= 5)" in text
+    assert "CI not informative at n<=5" in text
     assert "QFT        fidelity" in text
-    assert "Pearson Correlation (r):         +0.9431" in text
-    assert "Spearman Correlation (rho):      +0.7741" in text
-    assert "leave-random-out r = +0.8494, rho = +0.6946" in text
+    assert "Pearson Correlation (r):         +0.9294" in text
+    assert "Spearman Correlation (rho):      +0.7824" in text
+    assert "leave-random-out r = +0.8616, rho = +0.7378" in text
     assert "No causal explanation" in text
     assert "empirical observation" in text
 
@@ -882,11 +884,12 @@ def test_slide_facts_report_and_data_consistency():
 
     assert "All numbers in this document are dynamically computed/extracted" in text
     assert "Genuinely Warm Qubits (>0.05): 6 qubits" in text
-    assert "Qubits with excess > 0.05:   7 total" in text
-    assert "Qubits with excess > 0.01:   43 / 156" in text
-    assert "Distinct Circuits Evaluated: 16" in text
-    assert "IBM Dashboard Measured Time: 39 s per job (78 s main run, 86 s total" in text
-    assert "Pre-execution Plan Estimate: 51.0 s per job (17 circuits x 3.0 s), 102.0 s total planned" in text
+    assert "Qubits with excess > 0.05:    7 total" in text
+    assert "Qubits with excess > 0.01:    43 / 156" in text
+    assert "Distinct Circuits Evaluated: 17 (Mirror n = 5, GHZ n = 4, BV n = 4, QFT n = 4)" in text
+    assert "39 s per job x 2 jobs = 78 s (IBM dashboard, authoritative); 51 s was the pre-run plan estimate" in text
+    assert "Committed Layout Exposure:    No committed physical layout contains any qubit with excess > 0.05" in text
+    assert "L3 Baseline Drift Caveat:" in text
     assert "Hardware Thermal Arm Status:" in text
     assert "Random Baseline:" in text
 
@@ -922,6 +925,50 @@ def test_claim_check_checkpoint_t3_refusal_rules():
     ok5, msg5 = audit_analysis_exposure_and_esp(bad5)
     assert not ok5
     assert "README must explicitly state that hardware execution provides no evidence" in msg5
+
+    # 6. Quoting per-benchmark p-values or CIs -> refusal
+    bad6 = "Hardware execution provides no evidence regarding the thermal term. For GHZ, r = +0.9964 with p = 0.0035."
+    ok6, msg6 = audit_analysis_exposure_and_esp(bad6)
+    assert not ok6
+    assert "Forbidden per-benchmark p-value" in msg6
+
+    bad6_ci = "Hardware execution provides no evidence regarding the thermal term. For GHZ, r = +0.9964 with CI [+0.95, +0.99]."
+    ok6_ci, msg6_ci = audit_analysis_exposure_and_esp(bad6_ci)
+    assert not ok6_ci
+    assert "Forbidden per-benchmark CI" in msg6_ci
+
+    # 7. Quoting 16 distinct circuits or Mirror 4 distinct circuits -> refusal
+    bad7 = "Hardware execution provides no evidence regarding the thermal term. Mirror has 4 distinct circuits evaluated."
+    ok7, msg7 = audit_analysis_exposure_and_esp(bad7)
+    assert not ok7
+    assert "Mirror has 4 distinct circuits" in msg7 or "Mirror has 5 distinct circuits" in msg7
+
+    bad7_16 = "Hardware execution provides no evidence regarding the thermal term. Evaluated 16 distinct circuits."
+    ok7_16, msg7_16 = audit_analysis_exposure_and_esp(bad7_16)
+    assert not ok7_16
+    assert "16 distinct circuits" in msg7_16
+
+    # 8. Mentioning branch proposal without noting retraction -> refusal
+    bad8 = "Hardware execution provides no evidence regarding the thermal term. We consider a branch-only proposal for evaluation."
+    ok8, msg8 = audit_analysis_exposure_and_esp(bad8)
+    assert not ok8
+    assert "retraction" in msg8
+
+def test_layout_exposure_report_and_g3():
+    """Verify results/analysis/layout_exposure.txt exists, characterizes 12 layouts, and confirms Finding G3."""
+    report_path = Path("results/analysis/layout_exposure.txt")
+    assert report_path.exists(), "results/analysis/layout_exposure.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+
+    assert "COMMITTED HARDWARE LAYOUT WARM-QUBIT EXPOSURE ANALYSIS" in text
+    assert "Found 12 distinct physical layout(s) across all 24 hardware cells." in text
+    assert "CONFIRMED (Finding G3): No committed physical layout contains any qubit with" in text
+    assert "excess P(1|0) > 0.05" in text
+    assert "random layout max +0.0453" in text
+    assert "compiler layouts max <= +0.0173" in text
+    assert "Scope & Non-Claim Boundaries:" in text
+    assert "characterizes EXCLUSIVELY the 12 distinct committed physical layouts" in text
+    assert "makes NO claims regarding uncompiled circuits" in text
 
 
 

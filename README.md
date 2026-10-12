@@ -1,6 +1,6 @@
 # Thermal Qubit Mapping: Noise-Aware Mapping with Excited-State Population ($p_1$)
 
-[![Tests](https://img.shields.io/badge/tests-38%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-39%20passed-brightgreen.svg)]()
 [![Backend](https://img.shields.io/badge/IBM%20Quantum-ibm__marrakesh%20(156q)-blue.svg)]()
 [![Architecture](https://img.shields.io/badge/Architecture-Heron%20r2%20(CZ)-purple.svg)]()
 [![Budget](https://img.shields.io/badge/QPU%20Cap-350s%20(250s%20reserve)-orange.svg)]()
@@ -16,7 +16,7 @@ Superconducting transmon quantum processors are intrinsically susceptible to env
 Standard quantum compilers and noise-aware routing algorithms (such as standard Estimated Success Probability or ESP) incorporate single-qubit and two-qubit gate error rates ($\epsilon_{1q}, \epsilon_{2q}$) and readout assignment errors ($\epsilon_{ro}$). However, they routinely treat thermal excitation as either uniform or implicitly subsumed into relaxation times ($T_1$). In multi-qubit QPUs, local thermal hot-spots, asymmetric drive line heating, and quasiparticle poisoning generate spatial and temporal heterogeneity in $p_1$.
 
 This project introduces a **Thermal-Aware ESP metric** that penalizes qubit layouts mapped onto physically hot or thermally fluctuating subgraphs. We evaluate this metric through:
-1. **Extensive Aer Simulations**: Modeling synthetic thermal noise models across varying temperature profiles (15 mK to 50 mK) and testing over 38 unit test constraints.
+1. **Extensive Aer Simulations**: Modeling synthetic thermal noise models across varying temperature profiles (15 mK to 50 mK) and testing over 39 unit test constraints.
 2. **Real Hardware Benchmarking on IBM Quantum**: Executing 4 canonical quantum algorithms (GHZ, Bernstein-Vazirani, Quantum Fourier Transform, and Mirror Random Circuits) across 6 mapping strategies on the 156-qubit Heron r2 processor `ibm_marrakesh`.
 
 ---
@@ -109,6 +109,7 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 > [!NOTE]
 > **Experimental Setup & Equivalence Notes**:
 > - **Hardware Thermal Arm Status**: The hardware thermal arm was executed with `use_thermal=False` and no `p1` passed in `scripts/run_hardware.py` (lines 98 and 100). Consequently, hardware execution provides NO evidence regarding the thermal term; thermal and standard ESP selected identical layouts and circuits purely by code identity (`use_thermal=False` for both). Thermal-term evidence is simulation-only and circular (see existing caveat below).
+> - **Warm-Qubit Exposure**: No committed physical layout contains any qubit with excess $> 0.05$. The random baseline layout reaches an excess of $0.0453$ on Qubit 76, while compiler layouts maintain excess $\le 0.0173$ (e.g. Qubit 153 for BV L1/L3; Mirror layouts $\le 0.0121$).
 > - **Random Baseline**: The random baseline is a single layout `[80, 61, 62, 76, 81]` from a single draw (`num_draws=1, seed=42`) evaluated across all 4 benchmarks.
 > - **Heron r2 Native CZ Architecture**: `ibm_marrakesh` natively executes Controlled-Z (CZ) two-qubit operations, compiling GHZ-5 into exactly 4 CZ gates at minimal circuit depth 16.
 > - **Scope & Limits**: All hardware measurements were conducted on one backend (`ibm_marrakesh`), during one calibration day, with one fixed transpiled layout per cell across 2 repetitions of 8,192 shots (16,384 total pooled shots per cell). Consequently, confidence intervals quantify shot noise only.
@@ -131,7 +132,8 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 
 ### Methodological Limitations & Thermal Sensitivity Bounds
 
-- **Calibrated ESP Within-Benchmark Ranking**: Calibrated ESP scores separate coarse quality between random and compiler layouts (pooled $r = +0.9431$, $\rho = +0.7741$, $n = 12$ across GHZ, BV, Mirror), but did not reliably rank compiler layouts within a benchmark ($n = 4$ distinct circuits each, one calibration day); label as observation, not result. In BV, for example, the correlation is inverted ($r = -0.9885$, $\rho = -0.9487$), and no causal explanation is offered. Analysis v1 (`results/analysis/esp_vs_success.txt`) is superseded by v2 (`results/analysis/esp_vs_success_v2.txt`), which separates QFT fidelity from success probability and evaluates distinct circuits only.
+- **Calibrated ESP Within-Benchmark Ranking**: Calibrated ESP scores separate coarse quality between random and compiler layouts (pooled $r = +0.9294$, $\rho = +0.7824$, $n = 13$ across GHZ, BV, Mirror), but did not reliably rank compiler layouts within a benchmark (single calibration day). Mirror evaluated $n = 5$ distinct circuits, while GHZ, BV, and QFT evaluated $n = 4$ distinct circuits each ($17$ distinct circuits total); label as observation, not result. In BV, for example, the correlation is inverted ($r = -0.9885$, $\rho = -0.9487$), and no causal explanation is offered. Analysis v1 (`results/analysis/esp_vs_success.txt`) is superseded by v2 (`results/analysis/esp_vs_success_v2.txt`), which separates QFT fidelity from success probability and evaluates distinct circuits only without quoting uninformative per-benchmark p-values or confidence intervals.
+- **Retraction of Checkpoint T3 Branch-Only Proposal**: The Checkpoint T3 branch-only proposal is formally retracted. It evaluated an offline target (`FakeMarrakesh()`, 2025-02-26 calibration snapshot) without transpiler seeding, yielding layouts that did not match committed ESP layouts; it does not constitute valid hardware or simulation evidence.
 - **Hot-Spot Stress Test Plan Status**: The pre-registered hot-spot stress test plan (`results/hardware_extra/plan.json`, `PREREGISTRATION.txt`) is a dry run designed on `fake_marrakesh` (2025-02-26 calibration snapshot), not yet executed on live QPU hardware.
 - **Prefilter Check Target**: The offline sensitivity check `scripts/prefilter_check.py` used an offline target (`FakeMarrakesh()`, 2025-02-26) and does not reproduce committed layouts; not evidence.
 - **Vigo $N=5$ has no layout freedom**: On `FakeVigoV2` (5 qubits total), mapping any 5-qubit benchmark requires utilizing the entire chip $\{0, 1, 2, 3, 4\}$; there is no subgraph freedom to route around hot spots regardless of injected thermal excess.
@@ -179,14 +181,14 @@ thermal-qubit-mapping/
 │   ├── figures/                   # High-res slide charts and circuit diagrams
 │   └── hardware/                  # Raw counts, runtime_table.csv, plan, and provenance sidecars
 └── tests/
-    └── test_all.py                # 38 rigorous pytest unit tests
+    └── test_all.py                # 39 rigorous pytest unit tests
 ```
 
 ---
 
 ## 8. Reproducibility & Commands
 
-### 1. Run Unit Tests (38 Tests)
+### 1. Run Unit Tests (39 Tests)
 ```bash
 pytest -v tests/test_all.py
 ```

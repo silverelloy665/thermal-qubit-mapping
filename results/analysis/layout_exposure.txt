@@ -1,0 +1,107 @@
+====================================================================================
+COMMITTED HARDWARE LAYOUT WARM-QUBIT EXPOSURE ANALYSIS
+====================================================================================
+
+1. CALIBRATION & MEASUREMENT DATASET
+------------------------------------------------------------------------------------
+Backend:                  ibm_marrakesh (156 qubits)
+Calibration Timestamp:    2026-10-09T00:18:39+05:30
+P(1) Calibration Source:  p1_ibm_marrakesh_20261009T001839_0530.json
+Hardware Table Source:    results/hardware/runtime_table.csv
+
+2. EXPOSURE METRICS FOR DISTINCT COMMITTED PHYSICAL LAYOUTS
+------------------------------------------------------------------------------------
+Found 12 distinct physical layout(s) across all 24 hardware cells.
+
+#   Physical Layout            Max Excess     Max Qubit    Mean Excess    Associated Benchmarks & Methods
+------------------------------------------------------------------------------------------------------------
+1   [80, 61, 62, 76, 81]        +0.045288    Qubit 76      +0.019629    BV random, GHZ random, MIRROR random, QFT random
+2   [0, 1, 2, 3, 4]             +0.014282    Qubit 2       +0.000244    GHZ qiskit_L1
+3   [33, 34, 35, 19, 15]        +0.004517    Qubit 35      -0.000171    GHZ qiskit_L3, GHZ qiskit_L3_best3
+4   [32, 33, 34, 35, 19]        +0.004517    Qubit 35      -0.000464    GHZ esp_no_thermal, GHZ esp_thermal
+5   [3, 153, 6, 1, 2]           +0.017334    Qubit 153     +0.008496    BV qiskit_L1, BV qiskit_L3, BV qiskit_L3_best3
+6   [34, 19, 35, 32, 33]        +0.004517    Qubit 35      -0.000464    BV esp_no_thermal, BV esp_thermal
+7   [55, 39, 52, 54, 53]        +0.012085    Qubit 54      +0.002588    QFT qiskit_L1
+8   [55, 52, 39, 54, 53]        +0.012085    Qubit 54      +0.002588    QFT qiskit_L3, QFT qiskit_L3_best3
+9   [35, 19, 34, 15, 14]        +0.008545    Qubit 14      +0.001929    QFT esp_no_thermal, QFT esp_thermal
+10  [4, 2, 16, 1, 3]            +0.014282    Qubit 2       +0.000000    MIRROR qiskit_L1
+11  [54, 53, 39, 52, 55]        +0.012085    Qubit 54      +0.002588    MIRROR qiskit_L3, MIRROR qiskit_L3_best3
+12  [39, 53, 55, 54, 33]        +0.012085    Qubit 54      +0.002075    MIRROR esp_no_thermal, MIRROR esp_thermal
+
+3. DETAILED PER-QUBIT EXCESS BREAKDOWN
+------------------------------------------------------------------------------------
+Layout #1 [80, 61, 62, 76, 81] (BV random, GHZ random, MIRROR random, QFT random):
+  Max Excess:  +0.045288 (Qubit 76)
+  Mean Excess: +0.019629
+  Qubits:      Q80: exc=-0.0212 (p1=0.0122, ro=0.0334), Q61: exc=-0.0042 (p1=0.0129, ro=0.0171), Q62: exc=+0.0336 (p1=0.0413, ro=0.0077), Q76: exc=+0.0453 (p1=0.1011, ro=0.0558), Q81: exc=+0.0447 (p1=0.0706, ro=0.0259)
+
+Layout #2 [0, 1, 2, 3, 4] (GHZ qiskit_L1):
+  Max Excess:  +0.014282 (Qubit 2)
+  Mean Excess: +0.000244
+  Qubits:      Q0: exc=-0.0077 (p1=0.0012, ro=0.0089), Q1: exc=+0.0060 (p1=0.0095, ro=0.0035), Q2: exc=+0.0143 (p1=0.0186, ro=0.0043), Q3: exc=+0.0074 (p1=0.0142, ro=0.0067), Q4: exc=-0.0188 (p1=0.0063, ro=0.0251)
+
+Layout #3 [33, 34, 35, 19, 15] (GHZ qiskit_L3, GHZ qiskit_L3_best3):
+  Max Excess:  +0.004517 (Qubit 35)
+  Mean Excess: -0.000171
+  Qubits:      Q33: exc=-0.0020 (p1=0.0049, ro=0.0068), Q34: exc=-0.0009 (p1=0.0044, ro=0.0052), Q35: exc=+0.0045 (p1=0.0090, ro=0.0045), Q19: exc=-0.0016 (p1=0.0044, ro=0.0060), Q15: exc=-0.0010 (p1=0.0024, ro=0.0034)
+
+Layout #4 [32, 33, 34, 35, 19] (GHZ esp_no_thermal, GHZ esp_thermal):
+  Max Excess:  +0.004517 (Qubit 35)
+  Mean Excess: -0.000464
+  Qubits:      Q32: exc=-0.0024 (p1=0.0046, ro=0.0071), Q33: exc=-0.0020 (p1=0.0049, ro=0.0068), Q34: exc=-0.0009 (p1=0.0044, ro=0.0052), Q35: exc=+0.0045 (p1=0.0090, ro=0.0045), Q19: exc=-0.0016 (p1=0.0044, ro=0.0060)
+
+Layout #5 [3, 153, 6, 1, 2] (BV qiskit_L1, BV qiskit_L3, BV qiskit_L3_best3):
+  Max Excess:  +0.017334 (Qubit 153)
+  Mean Excess: +0.008496
+  Qubits:      Q3: exc=+0.0074 (p1=0.0142, ro=0.0067), Q153: exc=+0.0173 (p1=0.0200, ro=0.0027), Q6: exc=-0.0026 (p1=0.0002, ro=0.0028), Q1: exc=+0.0060 (p1=0.0095, ro=0.0035), Q2: exc=+0.0143 (p1=0.0186, ro=0.0043)
+
+Layout #6 [34, 19, 35, 32, 33] (BV esp_no_thermal, BV esp_thermal):
+  Max Excess:  +0.004517 (Qubit 35)
+  Mean Excess: -0.000464
+  Qubits:      Q34: exc=-0.0009 (p1=0.0044, ro=0.0052), Q19: exc=-0.0016 (p1=0.0044, ro=0.0060), Q35: exc=+0.0045 (p1=0.0090, ro=0.0045), Q32: exc=-0.0024 (p1=0.0046, ro=0.0071), Q33: exc=-0.0020 (p1=0.0049, ro=0.0068)
+
+Layout #7 [55, 39, 52, 54, 53] (QFT qiskit_L1):
+  Max Excess:  +0.012085 (Qubit 54)
+  Mean Excess: +0.002588
+  Qubits:      Q55: exc=+0.0048 (p1=0.0093, ro=0.0045), Q39: exc=-0.0040 (p1=0.0088, ro=0.0128), Q52: exc=+0.0006 (p1=0.0073, ro=0.0067), Q54: exc=+0.0121 (p1=0.0183, ro=0.0062), Q53: exc=-0.0005 (p1=0.0039, ro=0.0044)
+
+Layout #8 [55, 52, 39, 54, 53] (QFT qiskit_L3, QFT qiskit_L3_best3):
+  Max Excess:  +0.012085 (Qubit 54)
+  Mean Excess: +0.002588
+  Qubits:      Q55: exc=+0.0048 (p1=0.0093, ro=0.0045), Q52: exc=+0.0006 (p1=0.0073, ro=0.0067), Q39: exc=-0.0040 (p1=0.0088, ro=0.0128), Q54: exc=+0.0121 (p1=0.0183, ro=0.0062), Q53: exc=-0.0005 (p1=0.0039, ro=0.0044)
+
+Layout #9 [35, 19, 34, 15, 14] (QFT esp_no_thermal, QFT esp_thermal):
+  Max Excess:  +0.008545 (Qubit 14)
+  Mean Excess: +0.001929
+  Qubits:      Q35: exc=+0.0045 (p1=0.0090, ro=0.0045), Q19: exc=-0.0016 (p1=0.0044, ro=0.0060), Q34: exc=-0.0009 (p1=0.0044, ro=0.0052), Q15: exc=-0.0010 (p1=0.0024, ro=0.0034), Q14: exc=+0.0085 (p1=0.0208, ro=0.0122)
+
+Layout #10 [4, 2, 16, 1, 3] (MIRROR qiskit_L1):
+  Max Excess:  +0.014282 (Qubit 2)
+  Mean Excess: +0.000000
+  Qubits:      Q4: exc=-0.0188 (p1=0.0063, ro=0.0251), Q2: exc=+0.0143 (p1=0.0186, ro=0.0043), Q16: exc=-0.0089 (p1=0.0010, ro=0.0099), Q1: exc=+0.0060 (p1=0.0095, ro=0.0035), Q3: exc=+0.0074 (p1=0.0142, ro=0.0067)
+
+Layout #11 [54, 53, 39, 52, 55] (MIRROR qiskit_L3, MIRROR qiskit_L3_best3):
+  Max Excess:  +0.012085 (Qubit 54)
+  Mean Excess: +0.002588
+  Qubits:      Q54: exc=+0.0121 (p1=0.0183, ro=0.0062), Q53: exc=-0.0005 (p1=0.0039, ro=0.0044), Q39: exc=-0.0040 (p1=0.0088, ro=0.0128), Q52: exc=+0.0006 (p1=0.0073, ro=0.0067), Q55: exc=+0.0048 (p1=0.0093, ro=0.0045)
+
+Layout #12 [39, 53, 55, 54, 33] (MIRROR esp_no_thermal, MIRROR esp_thermal):
+  Max Excess:  +0.012085 (Qubit 54)
+  Mean Excess: +0.002075
+  Qubits:      Q39: exc=-0.0040 (p1=0.0088, ro=0.0128), Q53: exc=-0.0005 (p1=0.0039, ro=0.0044), Q55: exc=+0.0048 (p1=0.0093, ro=0.0045), Q54: exc=+0.0121 (p1=0.0183, ro=0.0062), Q33: exc=-0.0020 (p1=0.0049, ro=0.0068)
+
+4. VERIFICATION OF FINDING G3 & SCOPE BOUNDS
+------------------------------------------------------------------------------------
+Findings:
+  1. Random Layout Max Excess:    +0.045288 (Layout [80, 61, 62, 76, 81], max on Qubit 76)
+  2. Compiler Layouts Max Excess: +0.017334 (Layout [3, 153, 6, 1, 2], max on Qubit 153)
+  3. Threshold Compliance (>0.05):
+     CONFIRMED (Finding G3): No committed physical layout contains any qubit with
+     excess P(1|0) > 0.05 (random layout max +0.0453; compiler layouts max <= +0.0173).
+
+Scope & Non-Claim Boundaries:
+  - This analysis characterizes EXCLUSIVELY the 12 distinct committed physical layouts
+    evaluated in runtime_table.csv on ibm_marrakesh.
+  - It makes NO claims regarding uncompiled circuits or hypothetical compiler routing
+    on other benchmark circuits.
+====================================================================================

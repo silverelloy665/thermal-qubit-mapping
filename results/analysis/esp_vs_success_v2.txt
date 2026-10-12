@@ -9,82 +9,94 @@ conflated QFT Hellinger fidelity with binary success probability.
 1. DATASET & EXECUTION CONTEXT
 ------------------------------------------------------------------------------------
 Backend:                  ibm_marrakesh (156 qubits, Heron r2)
-Distinct Circuits:        n = 16 distinct compiled circuits (4 benchmarks x 4 distinct methods)
-Benchmarks:               GHZ, BV, Mirror (success_prob); QFT (Hellinger fidelity)
-Distinct Methods:         Random, Qiskit L1, Qiskit L3, ESP
-Deduplication:            L3_best3 identical to L3; esp_thermal identical to esp_no_thermal
+Distinct Circuits:        n = 17 distinct compiled circuits across 4 benchmarks:
+                            GHZ (n = 4), BV (n = 4), Mirror (n = 5), QFT (n = 4)
+Circuit Deduplication:    Keyed on circuit identity / shared_circuit flag in runtime_table.csv:
+                            - GHZ, BV, QFT: L3_best3 shares circuit with L3 (n = 4 each)
+                            - Mirror: L3 and L3_best3 have shared_circuit=False and differ in
+                              measured outcome (0.695 vs 0.689), yielding n = 5 distinct circuits
+                            - All benchmarks: esp_thermal shares circuit with esp_no_thermal
 Random Baseline:          Single layout [80, 61, 62, 76, 81] across all benchmarks (seed 42, 1 draw)
 Calibration Regime:       Single calibration day (2026-10-09T00:18:39+05:30)
 Source Data:              results/hardware/runtime_table.csv
 
-2. TABLE OF 16 DISTINCT CIRCUITS
+2. TABLE OF 17 DISTINCT CIRCUITS
 ------------------------------------------------------------------------------------
-#   Benchmark  Method       Layout                   2Q CZ  Depth  Calibrated ESP   Measured Success   Metric Type
-------------------------------------------------------------------------------------------------------------------
-1   GHZ        Random       [80, 61, 62, 76, 81]     17     32     0.729998         0.742310           success_prob
-2   GHZ        Qiskit L1    [0, 1, 2, 3, 4]          4      20     0.936282         0.914551           success_prob
-3   GHZ        Qiskit L3    [33, 34, 35, 19, 15]     4      16     0.952398         0.916016           success_prob
-4   GHZ        ESP          [32, 33, 34, 35, 19]     4      16     0.943321         0.902832           success_prob
-5   BV         Random       [80, 61, 62, 76, 81]     2      14     0.926559         0.863525           success_prob
-6   BV         Qiskit L1    [3, 153, 6, 1, 2]        2      15     0.865960         0.914307           success_prob
-7   BV         Qiskit L3    [3, 153, 6, 1, 2]        2      14     0.865960         0.911682           success_prob
-8   BV         ESP          [34, 19, 35, 32, 33]     2      14     0.941330         0.863159           success_prob
-9   MIRROR     Random       [80, 61, 62, 76, 81]     52     124    0.409669         0.501770           success_prob
-10  MIRROR     Qiskit L1    [4, 2, 16, 1, 3]         45     112    0.731826         0.755066           success_prob
-11  MIRROR     Qiskit L3    [54, 53, 39, 52, 55]     38     86     0.772610         0.695007           success_prob
-12  MIRROR     ESP          [39, 53, 55, 54, 33]     46     110    0.778992         0.739136           success_prob
-13  QFT        Random       [80, 61, 62, 76, 81]     39     107    0.425482         0.640747           fidelity
-14  QFT        Qiskit L1    [55, 39, 52, 54, 53]     41     122    0.745670         0.859741           fidelity
-15  QFT        Qiskit L3    [55, 52, 39, 54, 53]     30     83     0.789465         0.819336           fidelity
-16  QFT        ESP          [35, 19, 34, 15, 14]     39     92     0.858239         0.740662           fidelity
+#   Benchmark  Method           Layout                   2Q CZ  Depth  Calibrated ESP   Measured Success   Metric Type
+----------------------------------------------------------------------------------------------------------------------
+1   GHZ        Random           [80, 61, 62, 76, 81]     17     32     0.729998         0.742310           success_prob
+2   GHZ        Qiskit L1        [0, 1, 2, 3, 4]          4      20     0.936282         0.914551           success_prob
+3   GHZ        Qiskit L3        [33, 34, 35, 19, 15]     4      16     0.952398         0.916016           success_prob
+4   GHZ        ESP              [32, 33, 34, 35, 19]     4      16     0.943321         0.902832           success_prob
+5   BV         Random           [80, 61, 62, 76, 81]     2      14     0.926559         0.863525           success_prob
+6   BV         Qiskit L1        [3, 153, 6, 1, 2]        2      15     0.865960         0.914307           success_prob
+7   BV         Qiskit L3        [3, 153, 6, 1, 2]        2      14     0.865960         0.911682           success_prob
+8   BV         ESP              [34, 19, 35, 32, 33]     2      14     0.941330         0.863159           success_prob
+9   MIRROR     Random           [80, 61, 62, 76, 81]     52     124    0.409669         0.501770           success_prob
+10  MIRROR     Qiskit L1        [4, 2, 16, 1, 3]         45     112    0.731826         0.755066           success_prob
+11  MIRROR     Qiskit L3        [54, 53, 39, 52, 55]     38     86     0.772610         0.695007           success_prob
+12  MIRROR     Qiskit L3_best3  [54, 53, 39, 52, 55]     38     86     0.772610         0.688599           success_prob
+13  MIRROR     ESP              [39, 53, 55, 54, 33]     46     110    0.778992         0.739136           success_prob
+14  QFT        Random           [80, 61, 62, 76, 81]     39     107    0.425482         0.640747           fidelity
+15  QFT        Qiskit L1        [55, 39, 52, 54, 53]     41     122    0.745670         0.859741           fidelity
+16  QFT        Qiskit L3        [55, 52, 39, 54, 53]     30     83     0.789465         0.819336           fidelity
+17  QFT        ESP              [35, 19, 34, 15, 14]     39     92     0.858239         0.740662           fidelity
 
-3. POOLED SUCCESS PROBABILITY BENCHMARKS (GHZ, BV, MIRROR; N = 12)
+3. POOLED SUCCESS PROBABILITY BENCHMARKS (GHZ, BV, MIRROR; N = 13)
 ------------------------------------------------------------------------------------
-Pearson Correlation (r):         +0.9431 (p = 4.2716e-06)
-  Bootstrap 95% Confidence Interval: [+0.7722, +0.9878]
-Spearman Correlation (rho):      +0.7741 (p = 3.1267e-03)
-  Bootstrap 95% Confidence Interval: [+0.3268, +0.9504]
+NOTE: Coarse separation only; one random layout; one calibration day;
+benchmarks have different baselines.
 
-4. LEAVE-RANDOM-OUT COMPILER LAYOUTS (L1, L3, ESP; N = 9)
-------------------------------------------------------------------------------------
-Pearson Correlation (r):         +0.8494 (p = 3.7525e-03)
-  Bootstrap 95% Confidence Interval: [+0.5239, +0.9649]
-Spearman Correlation (rho):      +0.6946 (p = 3.7864e-02)
-  Bootstrap 95% Confidence Interval: [-0.0520, +0.9864]
+Pearson Correlation (r):         +0.9294 (p = 4.3123e-06)
+  Bootstrap 95% Confidence Interval: [+0.7976, +0.9814]
+Spearman Correlation (rho):      +0.7824 (p = 1.5724e-03)
+  Bootstrap 95% Confidence Interval: [+0.4423, +0.9395]
 
-5. PER-BENCHMARK CORRELATIONS (N = 4 DISTINCT CIRCUITS EACH)
+4. LEAVE-RANDOM-OUT COMPILER LAYOUTS (L1, L3, L3_BEST3, ESP; N = 10)
 ------------------------------------------------------------------------------------
-Benchmark  Metric         Pearson r    p-value        Pearson 95% CI           Spearman rho   p-value        Spearman 95% CI
---------------------------------------------------------------------------------------------------------------------
-GHZ        success_prob      +0.9964  3.5798e-03     [-1.0000, +1.0000]            +0.8000  2.0000e-01     [-1.0000, +1.0000]
-BV         success_prob      -0.9885  1.1510e-02     [-1.0000, -0.9795]            -0.9487  5.1317e-02     [-1.0000, -0.8165]
-MIRROR     success_prob      +0.9535  4.6468e-02     [-1.0000, +1.0000]            +0.4000  6.0000e-01     [-1.0000, +1.0000]
-QFT        fidelity          +0.7100  2.9004e-01     [-1.0000, +1.0000]            +0.2000  8.0000e-01     [-1.0000, +1.0000]
+NOTE: Coarse separation only; one calibration day; benchmarks have different baselines.
+
+Pearson Correlation (r):         +0.8616 (p = 1.3524e-03)
+  Bootstrap 95% Confidence Interval: [+0.7001, +0.9695]
+Spearman Correlation (rho):      +0.7378 (p = 1.4852e-02)
+  Bootstrap 95% Confidence Interval: [+0.1961, +0.9713]
+
+5. PER-BENCHMARK CORRELATIONS (r AND rho ONLY; CI NOT INFORMATIVE AT n <= 5)
+------------------------------------------------------------------------------------
+Benchmark  Metric         n    Pearson r      Spearman rho   Notes
+------------------------------------------------------------------------------------
+GHZ        success_prob   4         +0.9964       +0.8000  CI not informative at n<=5
+BV         success_prob   4         -0.9885       -0.9487  CI not informative at n<=5
+MIRROR     success_prob   5         +0.9331       +0.3591  CI not informative at n<=5
+QFT        fidelity       4         +0.7100       +0.2000  Hellinger fidelity; kept separate
 
 6. METHODOLOGICAL OBSERVATIONS & LIMITATIONS
 ------------------------------------------------------------------------------------
 Observations (not causal claims):
   1. Coarse Separation:
      Calibrated ESP cleanly separates poor (Random) from good (compiler) layouts across
-     success_prob benchmarks (pooled r = +0.9431, rho = +0.7741, n = 12).
+     success_prob benchmarks (pooled r = +0.9294, rho = +0.7824, n = 13).
+     However, this reflects coarse separation only; one random layout; one calibration day;
+     and benchmarks have different baselines.
   2. Within-Benchmark Ranking:
-     When omitting the single Random layout, correlation across compiler layouts drops
-     (leave-random-out r = +0.8494, rho = +0.6946, n = 9).
-     Within individual benchmarks (n = 4 distinct circuits each), ESP did not reliably
-     rank layouts. For example:
-       - GHZ: ESP tracks closely (r = +0.9964, rho = +0.8000).
-       - BV: Negative correlation (r = -0.9885, rho = -0.9487).
+     When omitting the single Random layout, correlation across compiler layouts is:
+     leave-random-out r = +0.8616, rho = +0.7378 (n = 10).
+     Within individual benchmarks (n <= 5 distinct circuits each), ESP did not reliably
+     rank compiler layouts. For example:
+       - GHZ (n = 4): ESP tracks closely (r = +0.9964, rho = +0.8000).
+       - BV (n = 4): Negative correlation (r = -0.9885, rho = -0.9487).
          In BV, Random ESP is 0.927 with success 0.8635; ESP layout ESP is 0.941 with
          success 0.8632; L1/L3 ESP is 0.866 with success ~0.910. No causal explanation
          is asserted; this is noted strictly as an empirical observation.
-       - Mirror: Pearson r = +0.9535, but rank ordering is weak (rho = +0.4000).
-       - QFT: Measured via Hellinger fidelity (n = 4; r = +0.7100, rho = +0.2000);
+       - Mirror (n = 5): Pearson r = +0.9458, but rank ordering is weak (rho = +0.3591).
+       - QFT (n = 4): Evaluated via Hellinger fidelity (r = +0.7100, rho = +0.2000);
          fidelity is not pooled with success probability.
   3. Limitations:
      - Single calibration day (2026-10-09T00:18:39+05:30) on ibm_marrakesh.
      - Random baseline is a single layout ([80, 61, 62, 76, 81]) from a single draw.
-     - Sample size is limited (n = 4 distinct circuits per benchmark).
+     - Per-benchmark sample sizes are n = 4 (GHZ, BV, QFT) and n = 5 (Mirror);
+       confidence intervals and p-values are not informative at n <= 5.
 
 ====================================================================================
-ANALYSIS COMPLETE: Finished in 22.89 s
+ANALYSIS COMPLETE: Finished in 25.08 s
 ====================================================================================
