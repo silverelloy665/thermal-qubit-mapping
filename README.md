@@ -1,6 +1,6 @@
 # Thermal Qubit Mapping: Noise-Aware Mapping with Excited-State Population ($p_1$)
 
-[![Tests](https://img.shields.io/badge/tests-20%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-38%20passed-brightgreen.svg)]()
 [![Backend](https://img.shields.io/badge/IBM%20Quantum-ibm__marrakesh%20(156q)-blue.svg)]()
 [![Architecture](https://img.shields.io/badge/Architecture-Heron%20r2%20(CZ)-purple.svg)]()
 [![Budget](https://img.shields.io/badge/QPU%20Cap-350s%20(250s%20reserve)-orange.svg)]()
@@ -16,7 +16,7 @@ Superconducting transmon quantum processors are intrinsically susceptible to env
 Standard quantum compilers and noise-aware routing algorithms (such as standard Estimated Success Probability or ESP) incorporate single-qubit and two-qubit gate error rates ($\epsilon_{1q}, \epsilon_{2q}$) and readout assignment errors ($\epsilon_{ro}$). However, they routinely treat thermal excitation as either uniform or implicitly subsumed into relaxation times ($T_1$). In multi-qubit QPUs, local thermal hot-spots, asymmetric drive line heating, and quasiparticle poisoning generate spatial and temporal heterogeneity in $p_1$.
 
 This project introduces a **Thermal-Aware ESP metric** that penalizes qubit layouts mapped onto physically hot or thermally fluctuating subgraphs. We evaluate this metric through:
-1. **Extensive Aer Simulations**: Modeling synthetic thermal noise models across varying temperature profiles (15 mK to 50 mK) and testing over 20+ unit test constraints.
+1. **Extensive Aer Simulations**: Modeling synthetic thermal noise models across varying temperature profiles (15 mK to 50 mK) and testing over 38 unit test constraints.
 2. **Real Hardware Benchmarking on IBM Quantum**: Executing 4 canonical quantum algorithms (GHZ, Bernstein-Vazirani, Quantum Fourier Transform, and Mirror Random Circuits) across 6 mapping strategies on the 156-qubit Heron r2 processor `ibm_marrakesh`.
 
 ---
@@ -47,15 +47,17 @@ The live QPU validation was conducted on IBM's flagship 156-qubit Heron r2 quant
 
 ### Execution Provenance & Job Tracking
 
-| Phase | Job ID | Backend | Circuits / PUBs | Shots | QPU Time | Status |
+| Phase | Job ID | Backend | Circuits / PUBs | Shots | QPU Time (Plan / Measured) | Status |
 |---|---|---|---|---|---|---|
-| **Pilot Run** | `db3ur4slf4us73c1v5pg` | `ibm_marrakesh` | 1 circuit | 8,192 | ~3.0 s | `DONE` |
-| **Thermal $P_1$ Calibration** | `db3usd2mb58s7388dskg` | `ibm_marrakesh` | 2 PUBs ($|0\rangle, X|0\rangle$) | 4,096 | ~3.0 s | `DONE` |
-| **Hardware Repetition 0** | `db3uv1cvf2bc73ctqt1g` | `ibm_marrakesh` | 17 de-duplicated circuits | 8,192 | 51.0 s | `DONE` |
-| **Hardware Repetition 1** | `db3uvecvf2bc73ctqto0` | `ibm_marrakesh` | 17 de-duplicated circuits | 8,192 | 51.0 s | `DONE` |
+| **Pilot Run** | `db3ur4slf4us73c1v5pg` | `ibm_marrakesh` | 1 circuit | 8,192 | ~3.0 s planned (4 s measured) | `DONE` |
+| **Thermal $P_1$ Calibration** | `db3usd2mb58s7388dskg` | `ibm_marrakesh` | 2 PUBs ($|0\rangle, X|0\rangle$) | 4,096 | ~3.0 s planned (4 s measured) | `DONE` |
+| **Hardware Repetition 0** | `db3uv1cvf2bc73ctqt1g` | `ibm_marrakesh` | 17 de-duplicated circuits | 8,192 | 51.0 s planned (39 s measured) | `DONE` |
+| **Hardware Repetition 1** | `db3uvecvf2bc73ctqto0` | `ibm_marrakesh` | 17 de-duplicated circuits | 8,192 | 51.0 s planned (39 s measured) | `DONE` |
 
-- **Total Execution Time**: **102.0 s** (benchmark circuits) + ~6.0 s (pilot & calibration) = **~108 s total QPU time**.
-- **Budget Compliance**: Configured budget cap of **350 s** strictly observed, leaving the **250 s reserve budget completely intact**.
+- **Execution Time Reconciliation**:
+  - **Pre-execution Plan Estimate**: Calculated as 51.0 s per job ($17\text{ circuits} \times 3.0\text{ s}$ conservative estimate in `results/hardware/plan.json`), giving **102.0 s** planned for the main benchmark run (~108 s total).
+  - **Authoritative Dashboard Measured Time**: Measured on the IBM Quantum dashboard (`results/hardware/runtime_audit_notes.txt`, transcribed 10 Oct 2026) as **39 s** per job (**78 s** total for the main benchmark run, 24% under the conservative estimate). Including pilot (4 s) and $P_1$ calibration (4 s), total project QPU usage was **86 s**.
+- **Budget Compliance**: Authoritative measured usage of **86 s** (or conservative estimate of 108 s) strictly complies with the configured budget cap of **350 s**, leaving the **250 s reserve budget completely intact**.
 - **Execution Mode**: Dedicated job mode, dynamical decoupling disabled, twirling disabled, preserving raw physical device noise characteristics.
 
 ---
@@ -106,7 +108,8 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 
 > [!NOTE]
 > **Experimental Setup & Equivalence Notes**:
-> - **Shared circuit => thermal == ESP by construction**: On `ibm_marrakesh`, thermal ESP and standard ESP selected the exact same physical layouts (`shared_circuit=True`) because measured $P(1|0)$ across the chosen active qubits remained near or below calibrated readout error $\epsilon_{\text{ro}}$ (excess $<0.02$ on all chosen qubits; e.g., mirror layout includes qubit 54 with excess 0.012). This identity is by construction of the de-duplicated circuit pipeline and does not represent independent empirical convergence.
+> - **Hardware Thermal Arm Status**: The hardware thermal arm was executed with `use_thermal=False` and no `p1` passed in `scripts/run_hardware.py` (lines 98 and 100). Consequently, hardware execution provides NO evidence regarding the thermal term; thermal and standard ESP selected identical layouts and circuits purely by code identity (`use_thermal=False` for both). Thermal-term evidence is simulation-only and circular (see existing caveat below).
+> - **Random Baseline**: The random baseline is a single layout `[80, 61, 62, 76, 81]` from a single draw (`num_draws=1, seed=42`) evaluated across all 4 benchmarks.
 > - **Heron r2 Native CZ Architecture**: `ibm_marrakesh` natively executes Controlled-Z (CZ) two-qubit operations, compiling GHZ-5 into exactly 4 CZ gates at minimal circuit depth 16.
 > - **Scope & Limits**: All hardware measurements were conducted on one backend (`ibm_marrakesh`), during one calibration day, with one fixed transpiled layout per cell across 2 repetitions of 8,192 shots (16,384 total pooled shots per cell). Consequently, confidence intervals quantify shot noise only.
 > - **Baseline Comparisons**: ESP significantly outperforms random qubit mapping by **+16.05 pts** on GHZ-5 ($90.28\%$ vs. $74.23\%$) and by **+23.73 pts** on Mirror-5 ($73.91\%$ vs. $50.18\%$). Compared against Qiskit L3, ESP yields -1.32 pts (GHZ), -4.85 pts (BV), -7.87 pts (QFT), and +4.41 pts (Mirror-5).
@@ -128,6 +131,9 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 
 ### Methodological Limitations & Thermal Sensitivity Bounds
 
+- **Calibrated ESP Within-Benchmark Ranking**: Calibrated ESP scores separate coarse quality between random and compiler layouts (pooled $r = +0.9431$, $\rho = +0.7741$, $n = 12$ across GHZ, BV, Mirror), but did not reliably rank compiler layouts within a benchmark ($n = 4$ distinct circuits each, one calibration day); label as observation, not result. In BV, for example, the correlation is inverted ($r = -0.9885$, $\rho = -0.9487$), and no causal explanation is offered. Analysis v1 (`results/analysis/esp_vs_success.txt`) is superseded by v2 (`results/analysis/esp_vs_success_v2.txt`), which separates QFT fidelity from success probability and evaluates distinct circuits only.
+- **Hot-Spot Stress Test Plan Status**: The pre-registered hot-spot stress test plan (`results/hardware_extra/plan.json`, `PREREGISTRATION.txt`) is a dry run designed on `fake_marrakesh` (2025-02-26 calibration snapshot), not yet executed on live QPU hardware.
+- **Prefilter Check Target**: The offline sensitivity check `scripts/prefilter_check.py` used an offline target (`FakeMarrakesh()`, 2025-02-26) and does not reproduce committed layouts; not evidence.
 - **Vigo $N=5$ has no layout freedom**: On `FakeVigoV2` (5 qubits total), mapping any 5-qubit benchmark requires utilizing the entire chip $\{0, 1, 2, 3, 4\}$; there is no subgraph freedom to route around hot spots regardless of injected thermal excess.
 - **10 seeds not 20**: The thermal sensitivity sweep evaluated 10 profile seeds per cell rather than 20 to operate within runtime budget constraints.
 - **Hot qubits forced into the default layout in $\ge 50\%$ of draws**: To test evasion efficacy, at least half of all random seed draws explicitly place at least one hot qubit inside the default plain-ESP layout.
@@ -173,14 +179,14 @@ thermal-qubit-mapping/
 │   ├── figures/                   # High-res slide charts and circuit diagrams
 │   └── hardware/                  # Raw counts, runtime_table.csv, plan, and provenance sidecars
 └── tests/
-    └── test_all.py                # 20 rigorous pytest unit tests
+    └── test_all.py                # 38 rigorous pytest unit tests
 ```
 
 ---
 
 ## 8. Reproducibility & Commands
 
-### 1. Run Unit Tests (20 Tests)
+### 1. Run Unit Tests (38 Tests)
 ```bash
 pytest -v tests/test_all.py
 ```

@@ -1,0 +1,68 @@
+====================================================================================
+THERMAL QUBIT MAPPING: VERIFIED SLIDE FACTS & KEY RESULTS
+====================================================================================
+All numbers in this document are dynamically computed/extracted directly from
+committed repository data files (runtime_table.csv, p1 JSON, plan.json, audit notes).
+No numerical claims are hand-typed.
+
+1. HARDWARE EXECUTION PERFORMANCE (IBM MARRAKESH)
+------------------------------------------------------------------------------------
+Benchmark  Metric         Random       Qiskit L1    Qiskit L3    L3 Best-of-3   Plain ESP    Thermal ESP
+--------------------------------------------------------------------------------------------------
+GHZ        success_prob   0.742310     0.914551     0.916016     0.916016       0.902832     0.902832
+BV         success_prob   0.863525     0.914307     0.911682     0.911682       0.863159     0.863159
+MIRROR     success_prob   0.501770     0.755066     0.695007     0.688599       0.739136     0.739136
+QFT        fidelity       0.640747     0.859741     0.819336     0.819336       0.740662     0.740662
+
+2. MEASURED P(1|0) & WARM-QUBIT CHARACTERISTICS
+------------------------------------------------------------------------------------
+Total Evaluated Qubits:      156
+Qubits with excess > 0.05:   7 total (including 1 readout-failure qubit: [94])
+Genuinely Warm Qubits (>0.05): 6 qubits (excluding readout-failure qubit 94)
+  List of Warm Qubits (>0.05): [11, 22, 23, 26, 125, 145] with excess values:
+    - Qubit  11: excess = +0.107910 (P(1|0)=0.1321, readout_err=0.0242)
+    - Qubit  22: excess = +0.190674 (P(1|0)=0.2026, readout_err=0.0120)
+    - Qubit  23: excess = +0.053101 (P(1|0)=0.0894, readout_err=0.0363)
+    - Qubit  26: excess = +0.109741 (P(1|0)=0.1523, readout_err=0.0426)
+    - Qubit 125: excess = +0.411743 (P(1|0)=0.4214, readout_err=0.0096)
+    - Qubit 145: excess = +0.058472 (P(1|0)=0.0725, readout_err=0.0140)
+    - Qubit  94 (Readout Failure): excess = +0.072998 (P(1|0)=0.4788, readout_err=0.4058)
+Qubits with excess > 0.02:   22 / 156 (14.10%)
+Qubits with excess > 0.01:   43 / 156 (27.56%)
+
+3. CALIBRATED ESP VS MEASURED SUCCESS (16 DISTINCT CIRCUITS)
+------------------------------------------------------------------------------------
+Distinct Circuits Evaluated: 16 (4 per benchmark; L3/L3_best3 and thermal/plain ESP share circuits)
+Pooled success_prob (GHZ, BV, Mirror; n = 12):
+  Pearson r:    +0.9431 (p = 4.2716e-06)
+  Spearman rho: +0.7741 (p = 3.1267e-03)
+Leave-Random-Out (L1, L3, ESP; n = 9):
+  Pearson r:    +0.8494 (p = 3.7525e-03)
+  Spearman rho: +0.6946 (p = 3.7864e-02)
+
+4. QPU TIMING: ESTIMATE VS MEASURED DASHBOARD
+------------------------------------------------------------------------------------
+Pre-execution Plan Estimate: 51.0 s per job (17 circuits x 3.0 s), 102.0 s total planned
+IBM Dashboard Measured Time: 39 s per job (78 s main run, 86 s total with pilot 4s + p1 4s)
+Efficiency:                  Main run completed 23.5% under pre-execution plan estimate
+
+5. CORE METHODOLOGICAL LIMITATIONS (SLIDE BULLETS)
+------------------------------------------------------------------------------------
+  - Hardware Thermal Arm Status:
+    The hardware thermal arm was executed with use_thermal=False and no p1 passed in
+    scripts/run_hardware.py. Hardware execution provides NO evidence regarding the
+    thermal objective term; thermal-term evidence is simulation-only and subject to the
+    circularity caveat.
+  - Random Baseline:
+    Random layout baseline is a single layout [80, 61, 62, 76, 81] from a single draw (seed 42).
+  - Calibrated ESP Ranking:
+    Calibrated ESP separates coarse quality between random and compiler layouts (pooled r = +0.9431),
+    but did not reliably rank compiler layouts within benchmarks (n = 4 distinct circuits each,
+    single calibration day). Label as observation, not result.
+  - Hot-Spot Stress Test:
+    The hardware hot-spot stress test plan is a pre-registered dry run built on fake_marrakesh
+    (2025-02-26 snapshot); it has not yet been executed on live QPU hardware.
+  - Prefilter Check Target:
+    prefilter_check.py used an offline target (FakeMarrakesh) and does not reproduce
+    committed layouts; not evidence.
+====================================================================================

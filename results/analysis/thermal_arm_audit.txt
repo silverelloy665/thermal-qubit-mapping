@@ -1,0 +1,68 @@
+====================================================================================
+HARDWARE THERMAL ARM CODE & DATA AUDIT
+====================================================================================
+
+1. CODE INSPECTION: scripts/run_hardware.py
+------------------------------------------------------------------------------------
+Found 2 mapper_esp call site(s) in scripts/run_hardware.py:
+
+Call Site #1 (Line 98):
+  Comment:        # 4. esp_no_thermal
+  Source:         tc_esp_no, _, _, lay_esp_no, _ = mapper_esp(b_circ, target, temps_mk=None, use_thermal=False, exhaustive=False)
+  use_thermal:    False
+  temps_mk:       None
+  p1 parameter:   NOT PASSED (None)
+  exhaustive:     False
+
+Call Site #2 (Line 100):
+  Comment:        # 5. esp_thermal (uses uniform 15mK or measured p1 if available)
+  Source:         tc_esp_th, _, _, lay_esp_th, _ = mapper_esp(b_circ, target, temps_mk=None, use_thermal=False, exhaustive=False)
+  use_thermal:    False
+  temps_mk:       None
+  p1 parameter:   NOT PASSED (None)
+  exhaustive:     False
+
+Side-by-Side Comparison of Call Sites:
+------------------------------------------------------------------------------------
+Feature                  | Call Site 1 (Line 98)              | Call Site 2 (Line 100)
+------------------------------------------------------------------------------------
+Target Variable          | tc_esp_no, lay_esp_no           | tc_esp_th, lay_esp_th
+Comment                  | # 4. esp_no_thermal             | # 5. esp_thermal (uses uniform 
+use_thermal              | False                           | False                          
+temps_mk                 | None                            | None                           
+p1 parameter             | None (omitted)                  | None (omitted)                 
+Identical Arguments?     | YES - Both pass use_thermal=False, temps_mk=None, exhaustive=False
+
+2. DATA CROSS-REFERENCE: results/hardware/runtime_table.csv
+------------------------------------------------------------------------------------
+Benchmark  Rep  Metric         Match Layout?  Match 2Q?  Match Depth? Diff in Metric   Status
+----------------------------------------------------------------------------------------
+GHZ        0    success_prob   True           True       True         0.000000e+00     IDENTICAL
+GHZ        1    success_prob   True           True       True         0.000000e+00     IDENTICAL
+BV         0    success_prob   True           True       True         0.000000e+00     IDENTICAL
+BV         1    success_prob   True           True       True         0.000000e+00     IDENTICAL
+QFT        0    fidelity       True           True       True         0.000000e+00     IDENTICAL
+QFT        1    fidelity       True           True       True         0.000000e+00     IDENTICAL
+MIRROR     0    success_prob   True           True       True         0.000000e+00     IDENTICAL
+MIRROR     1    success_prob   True           True       True         0.000000e+00     IDENTICAL
+
+Overall Data Check: ALL 8 COMPARISONS ARE BITWISE IDENTICAL
+
+3. FINDINGS & AUDIT CONCLUSION
+------------------------------------------------------------------------------------
+Confirmed Audit Facts:
+  1. In scripts/run_hardware.py (lines 98 and 100), the calls to mapper_esp for
+     'esp_no_thermal' and 'esp_thermal' are completely IDENTICAL:
+       Line 98:  mapper_esp(b_circ, target, temps_mk=None, use_thermal=False, exhaustive=False)
+       Line 100: mapper_esp(b_circ, target, temps_mk=None, use_thermal=False, exhaustive=False)
+  2. Neither call passes 'p1'. Both explicitly pass 'use_thermal=False'.
+  3. Consequently, the hardware 'esp_thermal' arm never applied any thermal penalty term.
+     The identical layouts, depths, gate counts, and measured metrics between 'esp_thermal'
+     and 'esp_no_thermal' in runtime_table.csv are produced entirely by code identity,
+     NOT because the layout mapper actively evaluated thermal data and selected identical layouts.
+  4. The previous README explanation ('Shared circuit => thermal == ESP by construction ...
+     because measured P(1|0) remained near or below readout error') was misleading.
+  5. Conclusion: Hardware execution on ibm_marrakesh provides NO empirical evidence regarding
+     the thermal term. Evidence for the thermal term is simulation-only (and subject to the
+     existing circularity caveat).
+====================================================================================

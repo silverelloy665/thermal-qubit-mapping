@@ -683,6 +683,9 @@ def test_hotspot_human_order_pilot_gate():
     from scripts.run_hotspot_hw import run_hotspot
     pilot_path = Path("results/hardware_extra/pilot_scale.json")
     plan_path = Path("results/hardware_extra/plan.json")
+    summary_path = Path("results/hardware_extra/hotspot_plan_summary.txt")
+    orig_summary = summary_path.read_text(encoding="utf-8") if summary_path.exists() else None
+    orig_plan = plan_path.read_text(encoding="utf-8") if plan_path.exists() else None
     bak_pilot = pilot_path.with_suffix(".bak_test")
     if pilot_path.exists():
         shutil.move(pilot_path, bak_pilot)
@@ -717,6 +720,10 @@ def test_hotspot_human_order_pilot_gate():
             pilot_path.unlink()
         if bak_pilot.exists():
             shutil.move(bak_pilot, pilot_path)
+        if orig_summary is not None:
+            summary_path.write_text(orig_summary, encoding="utf-8")
+        if orig_plan is not None:
+            plan_path.write_text(orig_plan, encoding="utf-8")
 
 def test_claim_check_extra_experiment(tmp_path):
     """Verify that claim_check audits every number quoted in README against hardware_extra_stats.csv."""
@@ -835,6 +842,87 @@ def test_prefilter_check_report_and_sensitivity():
     assert "BV         Thermal" in text
     assert "QFT        Thermal" in text
     assert "MIRROR     Thermal" in text
+
+def test_esp_vs_success_v2_report_and_distinct_circuits():
+    report_path = Path("results/analysis/esp_vs_success_v2.txt")
+    assert report_path.exists(), "results/analysis/esp_vs_success_v2.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+
+    assert "SUPERSEDES results/analysis/esp_vs_success.txt (v1)" in text
+    assert "n = 16 distinct compiled circuits" in text
+    assert "Single calibration day (2026-10-09T00:18:39+05:30)" in text
+    assert "Single layout [80, 61, 62, 76, 81]" in text
+    assert "POOLED SUCCESS PROBABILITY BENCHMARKS (GHZ, BV, MIRROR; N = 12)" in text
+    assert "LEAVE-RANDOM-OUT COMPILER LAYOUTS (L1, L3, ESP; N = 9)" in text
+    assert "PER-BENCHMARK CORRELATIONS (N = 4 DISTINCT CIRCUITS EACH)" in text
+    assert "QFT        fidelity" in text
+    assert "Pearson Correlation (r):         +0.9431" in text
+    assert "Spearman Correlation (rho):      +0.7741" in text
+    assert "leave-random-out r = +0.8494, rho = +0.6946" in text
+    assert "No causal explanation" in text
+    assert "empirical observation" in text
+
+def test_thermal_arm_audit_report_and_identical_calls():
+    report_path = Path("results/analysis/thermal_arm_audit.txt")
+    assert report_path.exists(), "results/analysis/thermal_arm_audit.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+
+    assert "CODE INSPECTION: scripts/run_hardware.py" in text
+    assert "Line 98" in text
+    assert "Line 100" in text
+    assert "Both pass use_thermal=False, temps_mk=None, exhaustive=False" in text
+    assert "NOT PASSED (None)" in text
+    assert "ALL 8 COMPARISONS ARE BITWISE IDENTICAL" in text
+    assert "Hardware execution on ibm_marrakesh provides NO empirical evidence" in text
+
+def test_slide_facts_report_and_data_consistency():
+    report_path = Path("results/analysis/slide_facts.txt")
+    assert report_path.exists(), "results/analysis/slide_facts.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+
+    assert "All numbers in this document are dynamically computed/extracted" in text
+    assert "Genuinely Warm Qubits (>0.05): 6 qubits" in text
+    assert "Qubits with excess > 0.05:   7 total" in text
+    assert "Qubits with excess > 0.01:   43 / 156" in text
+    assert "Distinct Circuits Evaluated: 16" in text
+    assert "IBM Dashboard Measured Time: 39 s per job (78 s main run, 86 s total" in text
+    assert "Pre-execution Plan Estimate: 51.0 s per job (17 circuits x 3.0 s), 102.0 s total planned" in text
+    assert "Hardware Thermal Arm Status:" in text
+    assert "Random Baseline:" in text
+
+def test_claim_check_checkpoint_t3_refusal_rules():
+    from scripts.claim_check import audit_analysis_exposure_and_esp
+
+    # 1. Hardware thermal ESP claiming validation against plain ESP -> refusal
+    bad1 = "Hardware validates the thermal term against plain ESP on ibm_marrakesh."
+    ok1, msg1 = audit_analysis_exposure_and_esp(bad1)
+    assert not ok1
+    assert "Forbidden hardware thermal claim" in msg1
+
+    # 2. Quoting pooled r=0.85/0.88 or p-values from v1 -> refusal
+    bad2 = "Hardware execution provides no evidence regarding the thermal term. Calibrated ESP showed strong correlation with r = 0.85 and p = 3.23e-07."
+    ok2, msg2 = audit_analysis_exposure_and_esp(bad2)
+    assert not ok2
+    assert "Forbidden correlation coefficient" in msg2 or "Forbidden p-value" in msg2
+
+    # 3. Implying an L3 exposure percentage -> refusal
+    bad3 = "Hardware execution provides no evidence regarding the thermal term. Our analysis shows that L3 hits warm qubits in 25% of compiled circuits."
+    ok3, msg3 = audit_analysis_exposure_and_esp(bad3)
+    assert not ok3
+    assert "Forbidden L3 exposure" in msg3
+
+    # 4. Prefilter check mentioned as a finding -> refusal
+    bad4 = "Hardware execution provides no evidence regarding the thermal term. prefilter_check confirmed that subgraph ranking changes with thermal penalty."
+    ok4, msg4 = audit_analysis_exposure_and_esp(bad4)
+    assert not ok4
+    assert "prefilter_check mentioned as finding" in msg4
+
+    # 5. Missing required statement that hardware provides no evidence -> refusal
+    bad5 = "Calibrated ESP showed good performance on hardware."
+    ok5, msg5 = audit_analysis_exposure_and_esp(bad5)
+    assert not ok5
+    assert "README must explicitly state that hardware execution provides no evidence" in msg5
+
 
 
 

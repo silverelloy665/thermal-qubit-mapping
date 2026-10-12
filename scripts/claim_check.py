@@ -189,6 +189,10 @@ def audit_hardware_extra(readme_content: str, extra_stats_csv="results/hardware_
 
     # 3. If mentioned, assert backing by hardware_extra_stats.csv and plan.json
     if not os.path.exists(extra_stats_csv):
+        # Allow pre-registered dry run disclosure if explicitly marked as dry run not yet executed on hardware
+        if "dry run" in readme_content.lower() and re.search(r"not\s+yet\s+executed\s+.*hardware", readme_content, re.IGNORECASE):
+            if os.path.exists(plan_path):
+                return True, "Hot-spot plan verified as dry run on fake_marrakesh, not yet executed on hardware."
         return False, f"Hardware extra mentioned in README, but {extra_stats_csv} not found."
     if not os.path.exists(plan_path):
         return False, f"Hardware extra mentioned in README, but {plan_path} not found."
@@ -333,15 +337,81 @@ def audit_readme(readme_path="README.md", csv_path="results/hardware/runtime_tab
     return True, "All claims verified"
 
 def audit_analysis_exposure_and_esp(readme_content: str, analysis_dir="results/analysis"):
-    premature_claims = [
+    content_lower = readme_content.lower()
+
+    # Rule 1: No claim that hardware thermal ESP differs from or is validated against plain ESP
+    forbidden_thermal_claims = [
+        "hardware thermal esp differs",
+        "thermal esp differs from plain esp",
+        "thermal esp outperformed plain esp on hardware",
+        "validates thermal esp on hardware",
+        "validated thermal esp on hardware",
+        "hardware validates the thermal",
+        "hardware validates thermal",
+        "hardware thermal arm validates",
+        "hardware provides evidence regarding the thermal term",
+    ]
+    for fc in forbidden_thermal_claims:
+        if fc in content_lower:
+            return False, f"Forbidden hardware thermal claim '{fc}' found in README."
+
+    # Misleading old phrase check
+    if "because measured p(1|0) remained near or below readout error" in content_lower:
+        return False, "Old misleading explanation ('because measured P(1|0) remained near or below readout error') found in README."
+
+    # Validate that README explicitly mentions that hardware execution provides no evidence for thermal term
+    if "hardware provides no evidence" not in content_lower and "hardware execution provides no evidence" not in content_lower:
+        return False, "README must explicitly state that hardware execution provides no evidence regarding the thermal term."
+
+    # Rule 2: No quoting pooled r=0.85/0.88 or any p-value from esp_vs_success v1
+    if re.search(r"(?:r|rho)\s*=\s*\+?0\.(?:8468|85|8817|88|8254)\b", readme_content):
+        return False, "Forbidden correlation coefficient from esp_vs_success v1 quoted in README."
+    v1_p_patterns = [
+        r"\b3\.23e-07\b",
+        r"\b1\.46e-07\b",
+        r"\b3\.2e-07\b",
+        r"\b1\.5e-07\b",
+        r"p\s*=\s*3\.23\s*x\s*10\^?-7",
+        r"p\s*=\s*1\.46\s*x\s*10\^?-7",
+    ]
+    for pat in v1_p_patterns:
+        if re.search(pat, readme_content, re.IGNORECASE):
+            return False, f"Forbidden p-value matching '{pat}' from esp_vs_success v1 quoted in README."
+
+    # Ensure esp_vs_success v1 is marked superseded if mentioned
+    if "esp_vs_success" in content_lower and "superseded" not in content_lower:
+        return False, "esp_vs_success v1 must be marked as superseded in README."
+
+    # Rule 3: No stating or implying an L3 exposure percentage from warm_exposure.txt
+    forbidden_l3_exposure = [
         "l3 hits warm qubits",
         "l3 hits warm qubit",
-        "esp vs success confirmed",
-        "prefilter check confirmed",
+        "l3 exposed to warm",
     ]
-    for claim in premature_claims:
-        if claim in readme_content.lower():
-            return False, f"Premature unbacked claim '{claim}' found in README."
+    for fc in forbidden_l3_exposure:
+        if fc in content_lower:
+            return False, f"Forbidden L3 exposure claim '{fc}' found in README."
+    if re.search(r"l3\s*(?:hits|exposes|samples)\s*(?:at\s*least\s*one\s*)?warm\s*qubit", content_lower):
+        return False, "Forbidden claim regarding L3 warm qubit exposure found in README."
+    if re.search(r"\d+(?:\.\d+)?%\s*(?:of\s*)?l3\s*(?:layouts|circuits)?\s*(?:hit|contain|touch)\s*warm", content_lower):
+        return False, "Forbidden L3 exposure percentage found in README."
+
+    # Rule 4 & 5: No mention of prefilter_check as a finding; must note offline target / not evidence
+    if "prefilter_check" in content_lower:
+        forbidden_prefilter_findings = [
+            "prefilter_check confirmed",
+            "prefilter_check finds",
+            "prefilter_check shows that",
+            "prefilter_check proves",
+            "prefilter_check demonstrates",
+            "prefilter_check finding",
+        ]
+        for fpf in forbidden_prefilter_findings:
+            if fpf in content_lower:
+                return False, f"prefilter_check mentioned as finding ('{fpf}') in README."
+        if "offline target" not in content_lower or "not evidence" not in content_lower:
+            return False, "README mention of prefilter_check must state it used an offline target and is not evidence."
+
     return True, "Analysis claims verified."
 
 
