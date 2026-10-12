@@ -247,12 +247,13 @@ def run_esp_vs_success_v2(
     bv_rand = bv_sub[bv_sub.method == "Random"].iloc[0]
     bv_esp = bv_sub[bv_sub.method == "ESP"].iloc[0]
     bv_l1 = bv_sub[bv_sub.method == "Qiskit L1"].iloc[0]
+    bv_l3 = bv_sub[bv_sub.method == "Qiskit L3"].iloc[0]
     lines.append(f"       - BV (n = {b_bv['n']}): Negative correlation (r = {b_bv['r']:+.4f}, rho = {b_bv['rho']:+.4f}).")
     lines.append(
         f"         In BV, Random ESP is {bv_rand['calibrated_esp']:.3f} with success {bv_rand['measured_success']:.4f}; "
         f"ESP layout ESP is {bv_esp['calibrated_esp']:.3f} with\n"
         f"         success {bv_esp['measured_success']:.4f}; L1/L3 ESP is {bv_l1['calibrated_esp']:.3f} with "
-        f"success ~{bv_l1['measured_success']:.3f}. No causal explanation\n"
+        f"success ~0.91 ({bv_l1['measured_success']:.4f} for L1, {bv_l3['measured_success']:.4f} for L3). No causal explanation\n"
         f"         is asserted; this is noted strictly as an empirical observation."
     )
 

@@ -446,6 +446,39 @@ def audit_analysis_exposure_and_esp(readme_content: str, analysis_dir="results/a
             if ("qiskit" in line_l or "l1" in line_l or "l3" in line_l) and "random" not in line_l:
                 return False, f"Forbidden claim that ESP outperforms/beats Qiskit on hardware: '{line.strip()}'"
 
+    # Rule 10 (A2): Fail if README matches r"significantly\s+outperform" anywhere
+    if re.search(r"significantly\s+outperform", readme_content, re.IGNORECASE):
+        return False, "Forbidden phrase matching r'significantly\\s+outperform' found in README."
+
+    # Rule 11 (C1): Fail if README says thermal rerun validates/confirms/proves the thermal term, or quotes a p-value/CI from it
+    rerun_claim_patterns = [
+        r"(?:thermal[\s_-]*(?:arm\s*)?rerun|rerun).*?(?:validat|confirm|prov)\w*\s+.*?(?:thermal\s*term|thermal\s*esp)",
+        r"(?:validat|confirm|prov)\w*\s+(?:the\s+)?thermal\s+term.*?(?:rerun|re-run)",
+        r"(?:thermal[\s_-]*(?:arm\s*)?rerun|rerun)\s+(?:validates|confirms|proves)\b",
+        r"(?:validates|confirms|proves)\s+(?:the\s+)?thermal\s+term",
+        r"thermal\s+term\s+(?:is\s+)?(?:validated|confirmed|proven|proved)",
+    ]
+    for pat in rerun_claim_patterns:
+        if re.search(pat, readme_content, re.IGNORECASE):
+            return False, f"Forbidden claim that thermal rerun validates/confirms/proves thermal term ('{pat}') found in README."
+
+    # Rerun p-values or CIs check (targets thermal-arm hardware rerun)
+    for line in readme_content.splitlines():
+        line_l = line.lower()
+        if re.search(r"thermal[\s_-]*arm\s*rerun|thermal\s*arm\s*hardware\s*rerun", line_l):
+            if re.search(r"\bp\s*=\s*[+-]?\d|\bp\s*<\s*\d", line_l):
+                return False, f"Forbidden p-value quoted for thermal rerun: '{line.strip()}'"
+            if re.search(r"ci\s*\[|\[\s*[-+]?\d+\.\d+[^\]]*\d+\.\d+\s*\]|\\pm\s*\d+\.\d+", line_l):
+                return False, f"Forbidden confidence interval quoted for thermal rerun: '{line.strip()}'"
+
+    rerun_section_m = re.search(r"(^#{1,4}[^\n]*(?:thermal[\s_-]*arm\s*rerun|thermal\s*arm\s*hardware\s*rerun)[^\n]*\n.*?)(?=\n#{1,4}\s|\Z)", readme_content, re.IGNORECASE | re.MULTILINE | re.DOTALL)
+    if rerun_section_m:
+        rerun_text = rerun_section_m.group(1)
+        if re.search(r"\bp\s*=\s*[+-]?\d|\bp\s*<\s*\d", rerun_text, re.IGNORECASE):
+            return False, "Forbidden p-value quoted in thermal rerun section in README."
+        if re.search(r"CI\s*\[|\[\s*[-+]?\d+\.\d+[^\]]*\d+\.\d+\s*\]|\\pm\s*\d+\.\d+", rerun_text, re.IGNORECASE):
+            return False, "Forbidden confidence interval quoted in thermal rerun section in README."
+
     return True, "Analysis claims verified."
 
 

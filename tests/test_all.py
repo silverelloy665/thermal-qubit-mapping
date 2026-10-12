@@ -963,6 +963,28 @@ def test_claim_check_checkpoint_t3_refusal_rules():
     assert not ok9
     assert "Forbidden claim that ESP outperforms/beats Qiskit on hardware" in msg9
 
+    # 10. Matching r"significantly\s+outperform" -> refusal
+    bad10 = "Hardware execution provides no evidence regarding the thermal term. ESP significantly outperforms random qubit mapping."
+    ok10, msg10 = audit_analysis_exposure_and_esp(bad10)
+    assert not ok10
+    assert "Forbidden phrase matching r'significantly\\s+outperform'" in msg10
+
+    # 11. Claiming thermal rerun validates/confirms/proves thermal term, or quotes p-value/CI -> refusal
+    bad11_val = "Hardware execution provides no evidence regarding the thermal term. The thermal-arm rerun validates the thermal term on hardware."
+    ok11_val, msg11_val = audit_analysis_exposure_and_esp(bad11_val)
+    assert not ok11_val
+    assert "validates/confirms/proves" in msg11_val
+
+    bad11_p = "Hardware execution provides no evidence regarding the thermal term. The thermal-arm rerun showed a difference with p = 0.04."
+    ok11_p, msg11_p = audit_analysis_exposure_and_esp(bad11_p)
+    assert not ok11_p
+    assert "Forbidden p-value quoted for thermal rerun" in msg11_p
+
+    bad11_ci = "Hardware execution provides no evidence regarding the thermal term. The thermal-arm rerun observed an effect with CI [+0.01, +0.05]."
+    ok11_ci, msg11_ci = audit_analysis_exposure_and_esp(bad11_ci)
+    assert not ok11_ci
+    assert "Forbidden confidence interval quoted for thermal rerun" in msg11_ci
+
 def test_layout_exposure_report_and_g3():
     """Verify results/analysis/layout_exposure.txt exists, characterizes 12 layouts, and confirms Finding G3."""
     report_path = Path("results/analysis/layout_exposure.txt")
@@ -1020,6 +1042,26 @@ def test_esp_v2_section6_matches_section5():
     for b in benchmarks:
         assert sec5_vals[b][0] == sec6_vals[b][0], f"r mismatch for {b}: Sec 5={sec5_vals[b][0]}, Sec 6={sec6_vals[b][0]}"
         assert sec5_vals[b][1] == sec6_vals[b][1], f"rho mismatch for {b}: Sec 5={sec5_vals[b][1]}, Sec 6={sec6_vals[b][1]}"
+
+def test_thermal_arm_offline_diff_and_refusal():
+    """Verify Gate 0 and Gate 3 refusal rules for run_thermal_arm_hw."""
+    from qiskit_ibm_runtime.fake_provider import FakeMarrakesh
+    from src.benchmarks.circuits import get_all_benchmarks
+    from src.mappers.mappers import mapper_esp
+    from src.noise_model.profile import load_config
+
+    config = load_config()
+    allowance = float(config.get("allowance_remaining_s", 279))
+    reserve = float(config.get("reserve_s", 150))
+    cap = float(config.get("extra_run_cap_s", 110))
+    spendable = allowance - reserve
+    hard_cap = min(cap, spendable)
+    assert hard_cap == 110.0, f"Expected hard cap 110.0, got {hard_cap}"
+
+    dev = FakeMarrakesh()
+    qc = get_all_benchmarks(5)['ghz']
+    tc_plain, _, _, lay_p, _ = mapper_esp(qc, dev.target, use_thermal=False, routing_seeds=1, max_candidate_layouts=20)
+    assert len(lay_p) == 5
 
 
 

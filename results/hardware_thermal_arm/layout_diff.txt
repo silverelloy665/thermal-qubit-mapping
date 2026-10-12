@@ -1,0 +1,32 @@
+================================================================================
+HARDWARE THERMAL-ARM OFFLINE LAYOUT DIFF REPORT
+================================================================================
+Backend:                      ibm_marrakesh
+Live Target Calibration Time: 2026-10-12T23:40:00+05:30
+Source p1 Calibration File:   p1_ibm_marrakesh_20261009T001839_0530.json (2026-10-09T00:18:39+05:30)
+Paired Evaluation:            Both arms compiled on SAME live target in same run
+Transpiler Settings:          seed=42, exhaustive=False, opt_level=3
+
+GATE 0 BUDGET AUDIT:
+  allowance_remaining_s:      279.0 s (config.yaml line 31)
+  reserve_s:                  150.0 s (config.yaml line 32)
+  extra_run_cap_s:            110.0 s (config.yaml line 33)
+  spendable:                  129.0 s
+  hard_cap:                   110.0 s
+
+PER-BENCHMARK LAYOUT COMPARISON:
+--------------------------------------------------------------------------------
+Benchmark  Diff?    Plain Layout              Plain Exc (mean/max)   Thermal Layout            Thermal Exc (mean/max)
+-------------------------------------------------------------------------------------------------------------------
+GHZ        True     [91, 92, 90, 89, 78]      0.0125 / 0.0289       [33, 39, 53, 54, 55]      0.0022 / 0.0109
+BV         True     [5, 2, 16, 3, 4]          0.0049 / 0.0107       [33, 39, 53, 31, 32]      0.0000 / 0.0000
+QFT        True     [4, 5, 6, 3, 7]           0.0044 / 0.0107       [3, 7, 5, 6, 4]           0.0044 / 0.0107
+MIRROR     True     [5, 3, 2, 4, 6]           0.0049 / 0.0107       [5, 7, 6, 8, 4]           0.0032 / 0.0107
+
+GATE 2 DECISION RULE:
+--------------------------------------------------------------------------------
+Differing Benchmarks (4): GHZ, BV, QFT, MIRROR
+Circuits to execute:    4 benchmarks x 2 arms x 2 reps = 16 circuits
+Planned QPU Seconds:    16 x 3.0 s = 48.0 s
+Hard Cap:               110.0 s
+STATUS: APPROVED FOR HARDWARE RUN (Planned seconds <= Hard Cap)

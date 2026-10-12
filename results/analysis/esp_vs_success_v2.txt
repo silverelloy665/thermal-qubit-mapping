@@ -86,7 +86,7 @@ Observations (not causal claims):
        - GHZ (n = 4): ESP tracks closely (r = +0.9964, rho = +0.8000).
        - BV (n = 4): Negative correlation (r = -0.9885, rho = -0.9487).
          In BV, Random ESP is 0.927 with success 0.8635; ESP layout ESP is 0.941 with
-         success 0.8632; L1/L3 ESP is 0.866 with success ~0.914. No causal explanation
+         success 0.8632; L1/L3 ESP is 0.866 with success ~0.91 (0.9143 for L1, 0.9117 for L3). No causal explanation
          is asserted; this is noted strictly as an empirical observation.
        - Mirror (n = 5): Pearson r = +0.9331, but rank ordering is weak (rho = +0.3591).
        - QFT (n = 4): Evaluated via Hellinger fidelity (r = +0.7100, rho = +0.2000);
@@ -98,5 +98,5 @@ Observations (not causal claims):
        confidence intervals and p-values are not informative at n <= 5.
 
 ====================================================================================
-ANALYSIS COMPLETE: Finished in 17.39 s
+ANALYSIS COMPLETE: Finished in 9.21 s
 ====================================================================================
