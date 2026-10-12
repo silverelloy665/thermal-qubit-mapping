@@ -423,9 +423,8 @@ def run_thermal_arm(approve_seconds=None):
     summary_lines.append(f"Repetitions:                  {reps_count}")
     summary_lines.append(f"Circuits Executed:            {len(circuits_batch)} (single job)")
     summary_lines.append(f"Planned QPU Seconds:          {planned_seconds:.1f} s")
-    summary_lines.append(f"Measured Job Run Seconds:     {run_sec:.2f} s")
-    remaining_allowance = allowance_remaining_s - run_sec
-    summary_lines.append(f"Allowance Remaining:          {remaining_allowance:.2f} s (allowance_remaining_s {allowance_remaining_s:.1f} s - measured {run_sec:.2f} s; dashboard must be checked manually)")
+    summary_lines.append("Job Run Seconds:              measured seconds unavailable from job metrics; dashboard value pending")
+    summary_lines.append("Allowance Remaining:          dashboard value pending (manual verification required)")
     summary_lines.append("")
     summary_lines.append("HONESTY CONSTRAINT:")
     summary_lines.append("  exploratory, one calibration day, 2 repetitions, 1 job. No p-values or CIs computed.")
@@ -441,8 +440,8 @@ def run_thermal_arm(approve_seconds=None):
     facts_lines.append(f"calibration_timestamp: {submission_timestamp}")
     facts_lines.append(f"job_id: {job_id}")
     facts_lines.append(f"planned_seconds: {planned_seconds:.1f}")
-    facts_lines.append(f"measured_run_seconds: {run_sec:.2f}")
-    facts_lines.append(f"allowance_remaining_s: {remaining_allowance:.2f}")
+    facts_lines.append("measured_run_seconds: measured seconds unavailable from job metrics; dashboard value pending")
+    facts_lines.append("allowance_remaining_s: dashboard value pending")
 
     for b_name in differing_benchmarks:
         m_type = [r["metric_type"] for r in rows if r["benchmark"] == b_name][0]

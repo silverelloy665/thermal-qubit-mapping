@@ -1,0 +1,114 @@
+================================================================================
+THERMAL-ARM HARDWARE RAW DATA AUDIT & CHECKSUM VERIFICATION
+================================================================================
+Raw directory: results\hardware_thermal_arm\raw
+Checksum file: results\hardware_thermal_arm\raw.sha256
+
+1. SHA256 CHECKSUM VERIFICATION
+--------------------------------------------------------------------------------
+  PASS: raw/bv_plain_r0.json matches (41769d2c8ab53a7a...)
+  PASS: raw/bv_plain_r1.json matches (631c637177979d4b...)
+  PASS: raw/bv_thermal_r0.json matches (c94590059d3a8c6f...)
+  PASS: raw/bv_thermal_r1.json matches (61a30626eba3683f...)
+  PASS: raw/ghz_plain_r0.json matches (8971b5921da2417d...)
+  PASS: raw/ghz_plain_r1.json matches (605ff51a2f10493a...)
+  PASS: raw/ghz_thermal_r0.json matches (dfde1448fdd9644b...)
+  PASS: raw/ghz_thermal_r1.json matches (585435581ebc3511...)
+  PASS: raw/mirror_plain_r0.json matches (b7a104e1fe27a628...)
+  PASS: raw/mirror_plain_r1.json matches (580c497305f83b31...)
+  PASS: raw/mirror_thermal_r0.json matches (cce52a447b81ccaa...)
+  PASS: raw/mirror_thermal_r1.json matches (74b3651e308c2956...)
+  PASS: raw/qft_plain_r0.json matches (e155797841ad4b48...)
+  PASS: raw/qft_plain_r1.json matches (c97badc76b2dda34...)
+  PASS: raw/qft_thermal_r0.json matches (fd4b4c7dbd38fa12...)
+  PASS: raw/qft_thermal_r1.json matches (542dd7cd5842583a...)
+Overall SHA256 Verification: PASS (16/16 verified)
+
+2. PER-FILE RAW COUNT METRICS (TOTAL SHOTS & DISTINCT BITSTRINGS)
+--------------------------------------------------------------------------------
+Filename                     Total Shots    Distinct Bitstrings    Max Count Bitstring (Count)
+--------------------------------------------------------------------------------
+ghz_plain_r0.json            8192           20                     '00000' (3938)
+ghz_plain_r1.json            8192           24                     '00000' (3940)
+ghz_thermal_r0.json          8192           27                     '00000' (3848)
+ghz_thermal_r1.json          8192           27                     '00000' (3721)
+bv_plain_r0.json             8192           12                     '1001' (7789)
+bv_plain_r1.json             8192           11                     '1001' (7796)
+bv_thermal_r0.json           8192           15                     '1001' (6971)
+bv_thermal_r1.json           8192           15                     '1001' (6970)
+qft_plain_r0.json            8192           32                     '00000' (6925)
+qft_plain_r1.json            8192           32                     '00000' (7010)
+qft_thermal_r0.json          8192           32                     '00000' (7215)
+qft_thermal_r1.json          8192           32                     '00000' (7178)
+mirror_plain_r0.json         8192           32                     '00000' (6195)
+mirror_plain_r1.json         8192           32                     '00000' (6198)
+mirror_thermal_r0.json       8192           32                     '00000' (5982)
+mirror_thermal_r1.json       8192           32                     '00000' (5992)
+
+3. REPETITION EQUIVALENCE AUDIT (r0 vs r1 PAIRWISE COMPARISON)
+--------------------------------------------------------------------------------
+Auditing whether r0 and r1 counts are identical dictionaries or independent physical draws.
+
+Pair: ghz_plain (r0 vs r1)
+  Raw counts dictionaries identical? : False
+  r0 distinct bitstrings: 20, r1 distinct bitstrings: 24
+  GHZ Target State Breakdown:
+    r0: '00000'=3938, '11111'=3674 -> Target Sum = 7612 / 8192 (92.9199%)
+    r1: '00000'=3940, '11111'=3672 -> Target Sum = 7612 / 8192 (92.9199%)
+    FINDING FOR ghz_plain: r0 and r1 counts are NOT identical dictionaries.
+    The target sums happen to be coincidentally identical (7612 shots), but the
+    distribution of shots between '00000' (3938 vs 3940) and '11111' (3674 vs 3672) and
+    the background error bitstrings (20 vs 24 distinct bitstrings) confirm independent physical shots.
+
+Pair: ghz_thermal (r0 vs r1)
+  Raw counts dictionaries identical? : False
+  r0 distinct bitstrings: 27, r1 distinct bitstrings: 27
+  GHZ Target State Breakdown:
+    r0: '00000'=3848, '11111'=3509 -> Target Sum = 7357 / 8192 (89.8071%)
+    r1: '00000'=3721, '11111'=3605 -> Target Sum = 7326 / 8192 (89.4287%)
+
+Pair: bv_plain (r0 vs r1)
+  Raw counts dictionaries identical? : False
+  r0 distinct bitstrings: 12, r1 distinct bitstrings: 11
+  r0 top-3: [('1001', 7789), ('0001', 108), ('1011', 85)]
+  r1 top-3: [('1001', 7796), ('1011', 90), ('1000', 83)]
+
+Pair: bv_thermal (r0 vs r1)
+  Raw counts dictionaries identical? : False
+  r0 distinct bitstrings: 15, r1 distinct bitstrings: 15
+  r0 top-3: [('1001', 6971), ('1011', 425), ('0001', 383)]
+  r1 top-3: [('1001', 6970), ('1011', 411), ('0001', 388)]
+
+Pair: qft_plain (r0 vs r1)
+  Raw counts dictionaries identical? : False
+  r0 distinct bitstrings: 32, r1 distinct bitstrings: 32
+  r0 top-3: [('00000', 6925), ('00001', 205), ('00010', 204)]
+  r1 top-3: [('00000', 7010), ('00010', 210), ('10000', 180)]
+
+Pair: qft_thermal (r0 vs r1)
+  Raw counts dictionaries identical? : False
+  r0 distinct bitstrings: 32, r1 distinct bitstrings: 32
+  r0 top-3: [('00000', 7215), ('00010', 184), ('00001', 180)]
+  r1 top-3: [('00000', 7178), ('00001', 185), ('00010', 182)]
+
+Pair: mirror_plain (r0 vs r1)
+  Raw counts dictionaries identical? : False
+  r0 distinct bitstrings: 32, r1 distinct bitstrings: 32
+  r0 top-3: [('00000', 6195), ('00010', 387), ('01000', 201)]
+  r1 top-3: [('00000', 6198), ('00010', 345), ('01000', 194)]
+
+Pair: mirror_thermal (r0 vs r1)
+  Raw counts dictionaries identical? : False
+  r0 distinct bitstrings: 32, r1 distinct bitstrings: 32
+  r0 top-3: [('00000', 5982), ('00010', 289), ('01000', 261)]
+  r1 top-3: [('00000', 5992), ('10000', 284), ('00010', 267)]
+
+4. AUDIT SUMMARY
+--------------------------------------------------------------------------------
+- All 16 raw count files contain exactly 8,192 shots.
+- Every SHA256 checksum in results/hardware_thermal_arm/raw.sha256 is verified and matches.
+- Across all 8 pairs (4 benchmarks x 2 methods), r0 and r1 counts are NOT identical dictionaries,
+  confirming independent execution repetitions.
+- For ghz_plain, r0 and r1 yielded identical success probability (92.9199%) because both repetitions
+  coincidentally accumulated exactly 7,612 target counts (|00000> + |11111>), though the individual state
+  counts ('00000': 3938 vs 3940; '11111': 3674 vs 3672) and error syndromes differed.

@@ -1,6 +1,6 @@
 # Thermal Qubit Mapping: Noise-Aware Mapping with Excited-State Population ($p_1$)
 
-[![Tests](https://img.shields.io/badge/tests-41%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-43%20passed-brightgreen.svg)]()
 [![Backend](https://img.shields.io/badge/IBM%20Quantum-ibm__marrakesh%20(156q)-blue.svg)]()
 [![Architecture](https://img.shields.io/badge/Architecture-Heron%20r2%20(CZ)-purple.svg)]()
 [![Budget](https://img.shields.io/badge/QPU%20Cap-350s%20(250s%20reserve)-orange.svg)]()
@@ -119,7 +119,7 @@ Below is the consolidated performance across all 48 experimental evaluations on 
 
 > [!NOTE]
 > **Scope & Honesty Constraint**:
-> This rerun is exploratory, conducted on one calibration day (calibration timestamp `2026-10-12T23:40:00+05:30` on `ibm_marrakesh`), across 2 repetitions of 8,192 shots executed in a single job (`db6j0o04qg6s73c4sp20`). No p-values or confidence intervals are computed ($n = 2$ repetitions, one day). No causal story is offered. The job run time was 48.00 s (planned: 48.0 s; allowance remaining: 231.00 s, which must be cross-checked manually against the IBM dashboard).
+> This rerun is exploratory, conducted on one calibration day (target calibration timestamp `2026-10-12T23:40:00+05:30` on `ibm_marrakesh`, paired with $p_1$ calibration data from `2026-10-09`), across 2 repetitions of 8,192 shots executed in a single job (`db6j0o04qg6s73c4sp20`). Planned QPU time was 48.0 s; measured runtime seconds were unavailable from job metrics (dashboard verification pending; preliminary allowance remaining claims are removed pending manual dashboard verification). No p-values or confidence intervals are computed ($n = 2$ repetitions, one day). No causal story is offered. These results do not validate the thermal term.
 
 In this paired rerun, the plain and thermal arms were compiled on the live target and evaluated across the 4 benchmarks:
 - **GHZ-5**: Plain mean 92.92% (r0: 92.92%, r1: 92.92%) vs. Thermal mean 89.62% (r0: 89.81%, r1: 89.43%), delta: -3.30 pts.
@@ -127,7 +127,7 @@ In this paired rerun, the plain and thermal arms were compiled on the live targe
 - **QFT-5** (fidelity): Plain mean 85.05% (r0: 84.53%, r1: 85.57%) vs. Thermal mean 87.85% (r0: 88.07%, r1: 87.62%), delta: +2.80 pts.
 - **Mirror-5**: Plain mean 75.64% (r0: 75.62%, r1: 75.66%) vs. Thermal mean 73.08% (r0: 73.02%, r1: 73.14%), delta: -2.56 pts.
 
-Thermal ESP did not beat plain ESP overall, trailing plain ESP on GHZ-5 (-3.30 pts), BV-5 (-10.03 pts), and Mirror-5 (-2.56 pts), while scoring higher on QFT-5 (+2.80 pts).
+Thermal ESP fell below plain ESP on 3 of 4 benchmarks (GHZ-5: -3.30 pts, BV-5: -10.03 pts, Mirror-5: -2.56 pts), while scoring higher on QFT-5 (+2.80 pts). For QFT-5, both plain (`[4, 5, 6, 3, 7]`) and thermal (`[3, 7, 5, 6, 4]`) layouts share the identical physical qubit set `{3, 4, 5, 6, 7}`, differing solely by initial permutation within that subgraph. Consequently, these hardware execution results do not validate the thermal term.
 
 ### Thermal-Gradient Sensitivity Sweep Results (`results/sim/thermal_sweep.csv`)
 

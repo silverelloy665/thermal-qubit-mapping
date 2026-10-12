@@ -2,8 +2,8 @@ backend: ibm_marrakesh
 calibration_timestamp: 2026-10-12T23:40:00+05:30
 job_id: db6j0o04qg6s73c4sp20
 planned_seconds: 48.0
-measured_run_seconds: 48.00
-allowance_remaining_s: 231.00
+measured_run_seconds: measured seconds unavailable from job metrics; dashboard value pending
+allowance_remaining_s: dashboard value pending
 ghz_plain_mean: 92.92%
 ghz_plain_r0: 92.92%
 ghz_plain_r1: 92.92%

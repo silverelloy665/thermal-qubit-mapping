@@ -985,6 +985,22 @@ def test_claim_check_checkpoint_t3_refusal_rules():
     assert not ok11_ci
     assert "Forbidden confidence interval quoted for thermal rerun" in msg11_ci
 
+    # 12. Claiming thermal ESP improves, helps or beats plain ESP on hardware -> refusal
+    bad12_beat = "Hardware execution provides no evidence regarding the thermal term. Thermal ESP beats plain ESP on hardware."
+    ok12_beat, msg12_beat = audit_analysis_exposure_and_esp(bad12_beat)
+    assert not ok12_beat
+    assert "Forbidden claim that thermal ESP improves/helps/beats plain ESP" in msg12_beat
+
+    bad12_imp = "Hardware execution provides no evidence regarding the thermal term. Thermal ESP improves plain ESP on hardware."
+    ok12_imp, msg12_imp = audit_analysis_exposure_and_esp(bad12_imp)
+    assert not ok12_imp
+    assert "Forbidden claim that thermal ESP improves/helps/beats plain ESP" in msg12_imp
+
+    # Permitted negative statement does not trigger refusal
+    good_neg = "Hardware execution provides no evidence regarding the thermal term. These results do not validate the thermal term. Thermal ESP fell below plain ESP on 3 of 4 benchmarks."
+    ok_neg, _ = audit_analysis_exposure_and_esp(good_neg)
+    assert ok_neg is True
+
 def test_layout_exposure_report_and_g3():
     """Verify results/analysis/layout_exposure.txt exists, characterizes 12 layouts, and confirms Finding G3."""
     report_path = Path("results/analysis/layout_exposure.txt")
@@ -1062,6 +1078,28 @@ def test_thermal_arm_offline_diff_and_refusal():
     qc = get_all_benchmarks(5)['ghz']
     tc_plain, _, _, lay_p, _ = mapper_esp(qc, dev.target, use_thermal=False, routing_seeds=1, max_candidate_layouts=20)
     assert len(lay_p) == 5
+
+def test_thermal_arm_raw_check_report():
+    """Verify results/analysis/thermal_arm_raw_check.txt exists and confirms raw file validity."""
+    report_path = Path("results/analysis/thermal_arm_raw_check.txt")
+    assert report_path.exists(), "results/analysis/thermal_arm_raw_check.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+    assert "Overall SHA256 Verification: PASS (16/16 verified)" in text
+    assert "ghz_plain (r0 vs r1)" in text
+    assert "Raw counts dictionaries identical? : False" in text
+    assert "coincidentally identical (7612 shots)" in text
+
+def test_thermal_arm_layout_explain_report():
+    """Verify results/analysis/thermal_arm_layout_explain.txt exists and confirms cross-objective metrics."""
+    report_path = Path("results/analysis/thermal_arm_layout_explain.txt")
+    assert report_path.exists(), "results/analysis/thermal_arm_layout_explain.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+    assert "BENCHMARK: BV-5" in text
+    assert "Under esp_standard: Plain" in text
+    assert "Under esp_thermal:  Thermal" in text
+    assert "BENCHMARK: QFT-5" in text
+    assert "Qubit Set Equivalence: True" in text
+    assert "No causal claims" in text
 
 
 

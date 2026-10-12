@@ -8,8 +8,8 @@ Shots:                        8192 per circuit
 Repetitions:                  2
 Circuits Executed:            16 (single job)
 Planned QPU Seconds:          48.0 s
-Measured Job Run Seconds:     48.00 s
-Allowance Remaining:          231.00 s (allowance_remaining_s 279.0 s - measured 48.00 s; dashboard must be checked manually)
+Job Run Seconds:              measured seconds unavailable from job metrics; dashboard value pending
+Allowance Remaining:          dashboard value pending (manual verification required)
 
 HONESTY CONSTRAINT:
   exploratory, one calibration day, 2 repetitions, 1 job. No p-values or CIs computed.

@@ -1,0 +1,74 @@
+=====================================================================================
+THERMAL-ARM LAYOUT SELECTION & CROSS-OBJECTIVE EVALUATION ANALYSIS
+=====================================================================================
+Target Device:                FakeMarrakesh() (ibm_marrakesh heavy-hex layout, 156 qubits)
+Source p1 Calibration File:   p1_ibm_marrakesh_20261009T001839_0530.json (2026-10-09T00:18:39+05:30)
+Evaluation Mode:              excess_over_readout (config default)
+Routing Search:               SABRE routing across seeds {0, 1, 2}, opt_level=3
+Methodology Constraint:       No causal claims asserted. Strictly empirical objective evaluations.
+
+1. CROSS-OBJECTIVE EVALUATION TABLE
+-------------------------------------------------------------------------------------
+Benchmark Arm       Layout                   CZ   Depth  esp_standard   esp_thermal    Thermal Penalty
+-----------------------------------------------------------------------------------------------
+GHZ       plain     [91, 92, 90, 89, 78]     5    17     0.905093       0.790372       0.8732 (-12.68%)
+GHZ       thermal   [33, 39, 53, 54, 55]     4    16     0.938676       0.928627       0.9893 (-1.07%)
+BV        plain     [5, 2, 16, 3, 4]         2    14     0.937076       0.883880       0.9432 (-5.68%)
+BV        thermal   [33, 39, 53, 31, 32]     2    14     0.932746       0.930925       0.9980 (-0.20%)
+QFT       plain     [4, 5, 6, 3, 7]          39   94     0.828581       0.788529       0.9517 (-4.83%)
+QFT       thermal   [3, 7, 5, 6, 4]          38   91     0.825616       0.785708       0.9517 (-4.83%)
+MIRROR    plain     [5, 3, 2, 4, 6]          47   113    0.798760       0.753416       0.9432 (-5.68%)
+MIRROR    thermal   [5, 7, 6, 8, 4]          48   111    0.817550       0.784530       0.9596 (-4.04%)
+
+2. PER-BENCHMARK MECHANISTIC OBSERVATIONS (NO CAUSAL CLAIMS)
+-------------------------------------------------------------------------------------
+BENCHMARK: BV-5
+  Plain Layout:   [5, 2, 16, 3, 4] (mean exc = 0.0058, max exc = 0.0144)
+  Thermal Layout: [33, 39, 53, 31, 32] (mean exc = 0.0002, max exc = 0.0010)
+  Under esp_standard: Plain (0.937076) > Thermal (0.932746)  [Plain wins by +0.43 pts]
+  Under esp_thermal:  Thermal (0.930925) > Plain (0.883880)  [Thermal wins by +4.70 pts]
+  Thermal Penalty:    Plain layout is penalized by -5.68%, whereas Thermal layout penalty is -0.20%.
+  Mechanism:          In BV, the layout shift is directly driven by the thermal penalty degradation.
+                      The plain layout has slightly better gate fidelity but incurs a ~5.7% thermal penalty,
+                      which causes the thermal objective to select the colder thermal layout.
+
+BENCHMARK: GHZ-5
+  Plain Layout:   [91, 92, 90, 89, 78] (mean exc = 0.0134, max exc = 0.0325)
+  Thermal Layout: [33, 39, 53, 54, 55] (mean exc = 0.0011, max exc = 0.0044)
+  Under esp_standard: Thermal (0.938676) > Plain (0.905093)  [Thermal higher by +3.36 pts]
+  Under esp_thermal:  Thermal (0.928627) > Plain (0.790372)  [Thermal higher by +13.83 pts]
+  Mechanism:          The thermal layout scores higher under BOTH esp_standard and esp_thermal.
+                      Here, the layout difference arose because rank_subgraphs produced differing top-50
+                      candidate pools for SABRE layout sampling, steering the heuristic search into
+                      a different subgraph region rather than the thermal penalty demoting an evaluated candidate.
+
+BENCHMARK: QFT-5
+  Plain Layout:   [4, 5, 6, 3, 7] (qubit set: [3, 4, 5, 6, 7])
+  Thermal Layout: [3, 7, 5, 6, 4] (qubit set: [3, 4, 5, 6, 7])
+  Qubit Set Equivalence: True (both layouts utilize the identical 5 physical qubits)
+  Under esp_standard: Plain (0.828581) ~= Thermal (0.825616)
+  Under esp_thermal:  Plain (0.788529) ~= Thermal (0.785708)
+  Mechanism:          Both plain and thermal arms selected the EXACT same set of physical qubits {3, 4, 5, 6, 7}.
+                      The layout difference is exclusively an initial qubit permutation within that identical
+                      subgraph, resulting in virtually identical thermal penalties (-4.83% vs -4.83%).
+
+BENCHMARK: MIRROR-5
+  Plain Layout:   [5, 3, 2, 4, 6] (mean exc = 0.0058, max exc = 0.0144)
+  Thermal Layout: [5, 7, 6, 8, 4] (mean exc = 0.0041, max exc = 0.0105)
+  Under esp_standard: Thermal (0.817550) > Plain (0.798760)  [Thermal higher by +1.88 pts]
+  Under esp_thermal:  Thermal (0.784530) > Plain (0.753416)  [Thermal higher by +3.11 pts]
+  Mechanism:          Similar to GHZ, the thermal layout scores higher under both evaluators, reflecting
+                      divergent candidate pools from the top-50 subgraph prefilter rather than a pure
+                      thermal-penalty layout inversion.
+
+3. SUMMARY & METHODOLOGICAL TAKEAWAYS
+-------------------------------------------------------------------------------------
+1. For BV-5, the thermal arm layout was selected directly due to thermal penalty degradation: the plain
+   layout's standard ESP (0.9371) is superior, but a ~5.7% thermal penalty drops it to 0.8839, allowing
+   the colder thermal layout (0.9309) to win.
+2. For QFT-5, both arms chose the IDENTICAL set of 5 physical qubits {3, 4, 5, 6, 7}; the layout difference
+   is purely an initial permutation inside the same physical subgraph.
+3. For GHZ-5 and Mirror-5, the thermal layout actually achieved higher scores under BOTH objectives,
+   indicating that differing top-50 candidate prefilter pools steered the heuristic SABRE search into
+   different graph regions.
+4. No causal claims are made regarding these objective evaluations.

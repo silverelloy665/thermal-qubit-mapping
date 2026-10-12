@@ -451,16 +451,29 @@ def audit_analysis_exposure_and_esp(readme_content: str, analysis_dir="results/a
         return False, "Forbidden phrase matching r'significantly\\s+outperform' found in README."
 
     # Rule 11 (C1): Fail if README says thermal rerun validates/confirms/proves the thermal term, or quotes a p-value/CI from it
-    rerun_claim_patterns = [
-        r"(?:thermal[\s_-]*(?:arm\s*)?rerun|rerun).*?(?:validat|confirm|prov)\w*\s+.*?(?:thermal\s*term|thermal\s*esp)",
-        r"(?:validat|confirm|prov)\w*\s+(?:the\s+)?thermal\s+term.*?(?:rerun|re-run)",
-        r"(?:thermal[\s_-]*(?:arm\s*)?rerun|rerun)\s+(?:validates|confirms|proves)\b",
-        r"(?:validates|confirms|proves)\s+(?:the\s+)?thermal\s+term",
-        r"thermal\s+term\s+(?:is\s+)?(?:validated|confirmed|proven|proved)",
-    ]
-    for pat in rerun_claim_patterns:
-        if re.search(pat, readme_content, re.IGNORECASE):
-            return False, f"Forbidden claim that thermal rerun validates/confirms/proves thermal term ('{pat}') found in README."
+    for line in readme_content.splitlines():
+        for sent in re.split(r'[\.\;\n]', line):
+            sent_l = sent.lower()
+            if re.search(r"\b(?:validat\w*|confirm\w*|prov(?:e|es|ed|ing|en)|proof\w*)\b.*?(?:thermal\s*term|thermal\s*esp)", sent_l):
+                if not re.search(r"\b(?:not|never|no|cannot|neither|fails?\s+to)\s+(?:validate\w*|confirm\w*|prove\w*|validating)", sent_l):
+                    return False, f"Forbidden claim that thermal rerun validates/confirms/proves thermal term: '{sent.strip()}'"
+            if re.search(r"(?:thermal[\s_-]*(?:arm\s*)?rerun|rerun)\s+(?:validates|confirms|proves)\b", sent_l):
+                if not re.search(r"\b(?:not|never|no|cannot|neither|fails?\s+to)\s+(?:validate\w*|confirm\w*|prove\w*|validating)", sent_l):
+                    return False, f"Forbidden claim that thermal rerun validates/confirms/proves thermal term: '{sent.strip()}'"
+            if re.search(r"\bthermal\s+term\s+(?:is\s+)?(?:validated|confirmed|proven|proved)\b", sent_l):
+                if not re.search(r"\b(?:not|never|no|cannot|neither|fails?\s+to)\b", sent_l):
+                    return False, f"Forbidden claim that thermal term is validated: '{sent.strip()}'"
+
+    # Rule 12 (T7): Fail if README says thermal ESP improves, helps or beats plain ESP on hardware
+    for line in readme_content.splitlines():
+        for sent in re.split(r'[\.\;\n]', line):
+            sent_l = sent.lower()
+            if re.search(r"\bthermal\s+(?:esp\s+)?(?:improves|helps|beats|outperforms|improved|helped|beat|outperformed)\s+(?:plain|standard)", sent_l):
+                if not re.search(r"\b(?:not|never|no|cannot|neither|fails?\s+to|below)\b", sent_l):
+                    return False, f"Forbidden claim that thermal ESP improves/helps/beats plain ESP on hardware: '{sent.strip()}'"
+            if re.search(r"\bthermal\s+esp\s+(?:improves|helps|beats|outperforms)\b", sent_l):
+                if ("hardware" in sent_l or "qpu" in sent_l or "marrakesh" in sent_l) and not re.search(r"\b(?:not|never|no|cannot|neither|fails?\s+to|below)\b", sent_l):
+                    return False, f"Forbidden claim that thermal ESP improves/helps/beats on hardware: '{sent.strip()}'"
 
     # Rerun p-values or CIs check (targets thermal-arm hardware rerun)
     for line in readme_content.splitlines():
