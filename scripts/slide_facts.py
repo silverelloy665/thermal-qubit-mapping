@@ -74,6 +74,20 @@ def generate_slide_facts(
         )
     lines.append("")
 
+    # ESP vs Qiskit L1 mean success deltas
+    l1_deltas = []
+    for b in bench_order:
+        sub = grouped[grouped.benchmark == b]
+        m_vals = dict(zip(sub["method"], sub["metric_val"]))
+        esp_v = m_vals.get("esp_no_thermal", np.nan)
+        l1_v = m_vals.get("qiskit_L1", np.nan)
+        diff_pts = (esp_v - l1_v) * 100.0
+        l1_deltas.append(f"{b.upper()} {diff_pts:+.2f} pts")
+    deltas_str = ", ".join(l1_deltas)
+    lines.append(f"ESP vs Qiskit L1 mean success: {deltas_str}")
+    lines.append("Note: point estimates from a single p1 measurement.")
+    lines.append("")
+
     # 2. Warm Qubit Distribution
     lines.append("2. MEASURED P(1|0) & WARM-QUBIT CHARACTERISTICS")
     lines.append("-" * 84)
@@ -279,7 +293,7 @@ def generate_slide_facts(
     lines.append("  - Random Baseline:")
     lines.append("    Random layout baseline is a single layout [80, 61, 62, 76, 81] from a single draw (seed 42).")
     lines.append("  - Calibrated ESP Ranking:")
-    lines.append("    Calibrated ESP separates coarse quality between random and compiler layouts (pooled r = +0.9427),")
+    lines.append(f"    Calibrated ESP separates coarse quality between random and compiler layouts (pooled r = {r_sp:+.4f}),")
     lines.append("    but did not reliably rank compiler layouts within benchmarks (n <= 5 distinct circuits each,")
     lines.append("    single calibration day). Label as observation, not result.")
     lines.append("  - L3 Baseline Drift Caveat:")

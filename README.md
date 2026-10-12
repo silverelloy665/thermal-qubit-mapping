@@ -1,6 +1,6 @@
 # Thermal Qubit Mapping: Noise-Aware Mapping with Excited-State Population ($p_1$)
 
-[![Tests](https://img.shields.io/badge/tests-39%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-40%20passed-brightgreen.svg)]()
 [![Backend](https://img.shields.io/badge/IBM%20Quantum-ibm__marrakesh%20(156q)-blue.svg)]()
 [![Architecture](https://img.shields.io/badge/Architecture-Heron%20r2%20(CZ)-purple.svg)]()
 [![Budget](https://img.shields.io/badge/QPU%20Cap-350s%20(250s%20reserve)-orange.svg)]()
@@ -16,7 +16,7 @@ Superconducting transmon quantum processors are intrinsically susceptible to env
 Standard quantum compilers and noise-aware routing algorithms (such as standard Estimated Success Probability or ESP) incorporate single-qubit and two-qubit gate error rates ($\epsilon_{1q}, \epsilon_{2q}$) and readout assignment errors ($\epsilon_{ro}$). However, they routinely treat thermal excitation as either uniform or implicitly subsumed into relaxation times ($T_1$). In multi-qubit QPUs, local thermal hot-spots, asymmetric drive line heating, and quasiparticle poisoning generate spatial and temporal heterogeneity in $p_1$.
 
 This project introduces a **Thermal-Aware ESP metric** that penalizes qubit layouts mapped onto physically hot or thermally fluctuating subgraphs. We evaluate this metric through:
-1. **Extensive Aer Simulations**: Modeling synthetic thermal noise models across varying temperature profiles (15 mK to 50 mK) and testing over 39 unit test constraints.
+1. **Extensive Aer Simulations**: Modeling synthetic thermal noise models across varying temperature profiles (15 mK to 50 mK) and testing over 40 unit test constraints.
 2. **Real Hardware Benchmarking on IBM Quantum**: Executing 4 canonical quantum algorithms (GHZ, Bernstein-Vazirani, Quantum Fourier Transform, and Mirror Random Circuits) across 6 mapping strategies on the 156-qubit Heron r2 processor `ibm_marrakesh`.
 
 ---
@@ -181,14 +181,14 @@ thermal-qubit-mapping/
 │   ├── figures/                   # High-res slide charts and circuit diagrams
 │   └── hardware/                  # Raw counts, runtime_table.csv, plan, and provenance sidecars
 └── tests/
-    └── test_all.py                # 39 rigorous pytest unit tests
+    └── test_all.py                # 40 rigorous pytest unit tests
 ```
 
 ---
 
 ## 8. Reproducibility & Commands
 
-### 1. Run Unit Tests (39 Tests)
+### 1. Run Unit Tests (40 Tests)
 ```bash
 pytest -v tests/test_all.py
 ```

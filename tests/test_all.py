@@ -2,6 +2,7 @@ import pytest
 import os
 import sys
 import math
+import re
 import numpy as np
 from pathlib import Path
 
@@ -889,6 +890,8 @@ def test_slide_facts_report_and_data_consistency():
     assert "Distinct Circuits Evaluated: 17 (Mirror n = 5, GHZ n = 4, BV n = 4, QFT n = 4)" in text
     assert "39 s per job x 2 jobs = 78 s (IBM dashboard, authoritative); 51 s was the pre-run plan estimate" in text
     assert "Committed Layout Exposure:    No committed physical layout contains any qubit with excess > 0.05" in text
+    assert "ESP vs Qiskit L1 mean success:" in text
+    assert "Note: point estimates from a single p1 measurement." in text
     assert "L3 Baseline Drift Caveat:" in text
     assert "Hardware Thermal Arm Status:" in text
     assert "Random Baseline:" in text
@@ -954,6 +957,12 @@ def test_claim_check_checkpoint_t3_refusal_rules():
     assert not ok8
     assert "retraction" in msg8
 
+    # 9. Claiming ESP outperforms/beats Qiskit on hardware -> refusal
+    bad9 = "Hardware execution provides no evidence regarding the thermal term. ESP outperforms Qiskit on hardware."
+    ok9, msg9 = audit_analysis_exposure_and_esp(bad9)
+    assert not ok9
+    assert "Forbidden claim that ESP outperforms/beats Qiskit on hardware" in msg9
+
 def test_layout_exposure_report_and_g3():
     """Verify results/analysis/layout_exposure.txt exists, characterizes 12 layouts, and confirms Finding G3."""
     report_path = Path("results/analysis/layout_exposure.txt")
@@ -969,6 +978,48 @@ def test_layout_exposure_report_and_g3():
     assert "Scope & Non-Claim Boundaries:" in text
     assert "characterizes EXCLUSIVELY the 12 distinct committed physical layouts" in text
     assert "makes NO claims regarding uncompiled circuits" in text
+
+def test_esp_v2_section6_matches_section5():
+    """Verify that every r and rho reported in Section 6 matches Section 5 in esp_vs_success_v2.txt."""
+    report_path = Path("results/analysis/esp_vs_success_v2.txt")
+    assert report_path.exists(), "results/analysis/esp_vs_success_v2.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+
+    sec5_match = re.search(r"5\. PER-BENCHMARK CORRELATIONS.*?(?=6\. METHODOLOGICAL OBSERVATIONS)", text, re.DOTALL)
+    assert sec5_match, "Section 5 not found in esp_vs_success_v2.txt"
+    sec5_text = sec5_match.group(0)
+
+    sec6_match = re.search(r"6\. METHODOLOGICAL OBSERVATIONS.*?(?====)", text, re.DOTALL)
+    assert sec6_match, "Section 6 not found in esp_vs_success_v2.txt"
+    sec6_text = sec6_match.group(0)
+
+    benchmarks = ["GHZ", "BV", "MIRROR", "QFT"]
+    sec5_vals = {}
+    for b in benchmarks:
+        m = re.search(rf"\b{b}\s+\w+\s+\d+\s+([+-]\d+\.\d+)\s+([+-]\d+\.\d+)", sec5_text)
+        assert m, f"Could not parse {b} in Section 5"
+        sec5_vals[b] = (float(m.group(1)), float(m.group(2)))
+
+    sec6_vals = {}
+    m_ghz = re.search(r"GHZ[^\n]*\(\s*r\s*=\s*([+-]\d+\.\d+),\s*rho\s*=\s*([+-]\d+\.\d+)\)", sec6_text)
+    assert m_ghz, "Could not parse GHZ in Section 6"
+    sec6_vals["GHZ"] = (float(m_ghz.group(1)), float(m_ghz.group(2)))
+
+    m_bv = re.search(r"BV[^\n]*\(\s*r\s*=\s*([+-]\d+\.\d+),\s*rho\s*=\s*([+-]\d+\.\d+)\)", sec6_text)
+    assert m_bv, "Could not parse BV in Section 6"
+    sec6_vals["BV"] = (float(m_bv.group(1)), float(m_bv.group(2)))
+
+    m_mir = re.search(r"Mirror[^\n]*Pearson\s*r\s*=\s*([+-]\d+\.\d+)[^\n]*\(\s*rho\s*=\s*([+-]\d+\.\d+)\)", sec6_text)
+    assert m_mir, "Could not parse Mirror in Section 6"
+    sec6_vals["MIRROR"] = (float(m_mir.group(1)), float(m_mir.group(2)))
+
+    m_qft = re.search(r"QFT[^\n]*\(\s*r\s*=\s*([+-]\d+\.\d+),\s*rho\s*=\s*([+-]\d+\.\d+)\)", sec6_text)
+    assert m_qft, "Could not parse QFT in Section 6"
+    sec6_vals["QFT"] = (float(m_qft.group(1)), float(m_qft.group(2)))
+
+    for b in benchmarks:
+        assert sec5_vals[b][0] == sec6_vals[b][0], f"r mismatch for {b}: Sec 5={sec5_vals[b][0]}, Sec 6={sec6_vals[b][0]}"
+        assert sec5_vals[b][1] == sec6_vals[b][1], f"rho mismatch for {b}: Sec 5={sec5_vals[b][1]}, Sec 6={sec6_vals[b][1]}"
 
 
 

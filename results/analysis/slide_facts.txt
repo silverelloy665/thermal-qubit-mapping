@@ -14,6 +14,9 @@ BV         success_prob   0.863525     0.914307     0.911682     0.911682       
 MIRROR     success_prob   0.501770     0.755066     0.695007     0.688599       0.739136     0.739136
 QFT        fidelity       0.640747     0.859741     0.819336     0.819336       0.740662     0.740662
 
+ESP vs Qiskit L1 mean success: GHZ -1.17 pts, BV -5.11 pts, MIRROR -1.59 pts, QFT -11.91 pts
+Note: point estimates from a single p1 measurement.
+
 2. MEASURED P(1|0) & WARM-QUBIT CHARACTERISTICS
 ------------------------------------------------------------------------------------
 Total Evaluated Qubits:       156

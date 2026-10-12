@@ -436,6 +436,16 @@ def audit_analysis_exposure_and_esp(readme_content: str, analysis_dir="results/a
         if "retract" not in content_lower:
             return False, "Checkpoint T3 branch proposal is mentioned without explicitly noting its retraction."
 
+    # Rule 9: Fail if README says ESP outperforms/beats Qiskit on hardware
+    for line in readme_content.splitlines():
+        line_l = line.lower()
+        if re.search(r"\besp\s+(?:outperforms|beats|outperformed|beat)\s+(?:any\s+)?qiskit", line_l):
+            if "hardware" in line_l or "qpu" in line_l or "marrakesh" in line_l or ("sim" not in line_l and "sweep" not in line_l):
+                return False, f"Forbidden claim that ESP outperforms/beats Qiskit on hardware: '{line.strip()}'"
+        if re.search(r"\besp\s+(?:outperforms|beats|outperformed|beat)\s+.*(?:on\s+hardware|on\s+the\s+hardware|hardware)", line_l):
+            if ("qiskit" in line_l or "l1" in line_l or "l3" in line_l) and "random" not in line_l:
+                return False, f"Forbidden claim that ESP outperforms/beats Qiskit on hardware: '{line.strip()}'"
+
     return True, "Analysis claims verified."
 
 

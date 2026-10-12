@@ -198,6 +198,7 @@ def run_esp_vs_success_v2(
     lines.append(f"{'Benchmark':<10} {'Metric':<14} {'n':<4} {'Pearson r':<14} {'Spearman rho':<14} {'Notes'}")
     lines.append("-" * 84)
 
+    bench_stats = {}
     for b_name in ["ghz", "bv", "mirror", "qft"]:
         sub = df_pts[df_pts.benchmark == b_name]
         xb = sub["calibrated_esp"].values
@@ -207,6 +208,14 @@ def run_esp_vs_success_v2(
 
         rb, _ = pearsonr(xb, yb)
         rhob, _ = spearmanr(xb, yb)
+
+        bench_stats[b_name] = {
+            "n": n_b,
+            "r": rb,
+            "rho": rhob,
+            "metric_type": m_type,
+            "sub": sub,
+        }
 
         note = "Hellinger fidelity; kept separate" if b_name == "qft" else "CI not informative at n<=5"
 
@@ -221,21 +230,37 @@ def run_esp_vs_success_v2(
     lines.append("Observations (not causal claims):")
     lines.append("  1. Coarse Separation:")
     lines.append("     Calibrated ESP cleanly separates poor (Random) from good (compiler) layouts across")
-    lines.append(f"     success_prob benchmarks (pooled r = {r_sp:+.4f}, rho = {rho_sp:+.4f}, n = 13).")
+    lines.append(f"     success_prob benchmarks (pooled r = {r_sp:+.4f}, rho = {rho_sp:+.4f}, n = {len(sp_df)}).")
     lines.append("     However, this reflects coarse separation only; one random layout; one calibration day;")
     lines.append("     and benchmarks have different baselines.")
     lines.append("  2. Within-Benchmark Ranking:")
     lines.append("     When omitting the single Random layout, correlation across compiler layouts is:")
-    lines.append(f"     leave-random-out r = {r_nr:+.4f}, rho = {rho_nr:+.4f} (n = 10).")
+    lines.append(f"     leave-random-out r = {r_nr:+.4f}, rho = {rho_nr:+.4f} (n = {len(sp_norand)}).")
     lines.append("     Within individual benchmarks (n <= 5 distinct circuits each), ESP did not reliably")
     lines.append("     rank compiler layouts. For example:")
-    lines.append("       - GHZ (n = 4): ESP tracks closely (r = +0.9964, rho = +0.8000).")
-    lines.append("       - BV (n = 4): Negative correlation (r = -0.9885, rho = -0.9487).")
-    lines.append("         In BV, Random ESP is 0.927 with success 0.8635; ESP layout ESP is 0.941 with")
-    lines.append("         success 0.8632; L1/L3 ESP is 0.866 with success ~0.910. No causal explanation")
-    lines.append("         is asserted; this is noted strictly as an empirical observation.")
-    lines.append("       - Mirror (n = 5): Pearson r = +0.9458, but rank ordering is weak (rho = +0.3591).")
-    lines.append("       - QFT (n = 4): Evaluated via Hellinger fidelity (r = +0.7100, rho = +0.2000);")
+
+    b_ghz = bench_stats["ghz"]
+    lines.append(f"       - GHZ (n = {b_ghz['n']}): ESP tracks closely (r = {b_ghz['r']:+.4f}, rho = {b_ghz['rho']:+.4f}).")
+
+    b_bv = bench_stats["bv"]
+    bv_sub = b_bv["sub"]
+    bv_rand = bv_sub[bv_sub.method == "Random"].iloc[0]
+    bv_esp = bv_sub[bv_sub.method == "ESP"].iloc[0]
+    bv_l1 = bv_sub[bv_sub.method == "Qiskit L1"].iloc[0]
+    lines.append(f"       - BV (n = {b_bv['n']}): Negative correlation (r = {b_bv['r']:+.4f}, rho = {b_bv['rho']:+.4f}).")
+    lines.append(
+        f"         In BV, Random ESP is {bv_rand['calibrated_esp']:.3f} with success {bv_rand['measured_success']:.4f}; "
+        f"ESP layout ESP is {bv_esp['calibrated_esp']:.3f} with\n"
+        f"         success {bv_esp['measured_success']:.4f}; L1/L3 ESP is {bv_l1['calibrated_esp']:.3f} with "
+        f"success ~{bv_l1['measured_success']:.3f}. No causal explanation\n"
+        f"         is asserted; this is noted strictly as an empirical observation."
+    )
+
+    b_mir = bench_stats["mirror"]
+    lines.append(f"       - Mirror (n = {b_mir['n']}): Pearson r = {b_mir['r']:+.4f}, but rank ordering is weak (rho = {b_mir['rho']:+.4f}).")
+
+    b_qft = bench_stats["qft"]
+    lines.append(f"       - QFT (n = {b_qft['n']}): Evaluated via Hellinger fidelity (r = {b_qft['r']:+.4f}, rho = {b_qft['rho']:+.4f});")
     lines.append("         fidelity is not pooled with success probability.")
     lines.append("  3. Limitations:")
     lines.append("     - Single calibration day (2026-10-09T00:18:39+05:30) on ibm_marrakesh.")
