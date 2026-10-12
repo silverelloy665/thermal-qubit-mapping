@@ -1,6 +1,6 @@
 # Thermal Qubit Mapping: Noise-Aware Mapping with Excited-State Population ($p_1$)
 
-[![Tests](https://img.shields.io/badge/tests-43%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-44%20passed-brightgreen.svg)]()
 [![Backend](https://img.shields.io/badge/IBM%20Quantum-ibm__marrakesh%20(156q)-blue.svg)]()
 [![Architecture](https://img.shields.io/badge/Architecture-Heron%20r2%20(CZ)-purple.svg)]()
 [![Budget](https://img.shields.io/badge/QPU%20Cap-350s%20(250s%20reserve)-orange.svg)]()
@@ -129,6 +129,9 @@ In this paired rerun, the plain and thermal arms were compiled on the live targe
 
 Thermal ESP fell below plain ESP on 3 of 4 benchmarks (GHZ-5: -3.30 pts, BV-5: -10.03 pts, Mirror-5: -2.56 pts), while scoring higher on QFT-5 (+2.80 pts). For QFT-5, both plain (`[4, 5, 6, 3, 7]`) and thermal (`[3, 7, 5, 6, 4]`) layouts share the identical physical qubit set `{3, 4, 5, 6, 7}`, differing solely by initial permutation within that subgraph. Consequently, these hardware execution results do not validate the thermal term.
 
+> [!NOTE]
+> **Provenance Note**: `scripts/run_thermal_arm_hw.py` was edited after the run (label fix only to reflect pending dashboard seconds, commit `94c8254`). Raw execution data, layouts, compiled circuits, and SHA-256 checksums remain identical and unedited.
+
 ### Thermal-Gradient Sensitivity Sweep Results (`results/sim/thermal_sweep.csv`)
 
 - **Baseline Comparative Performance vs Qiskit L3**:
@@ -195,14 +198,14 @@ thermal-qubit-mapping/
 │   ├── figures/                   # High-res slide charts and circuit diagrams
 │   └── hardware/                  # Raw counts, runtime_table.csv, plan, and provenance sidecars
 └── tests/
-    └── test_all.py                # 40 rigorous pytest unit tests
+    └── test_all.py                # 44 rigorous pytest unit tests
 ```
 
 ---
 
 ## 8. Reproducibility & Commands
 
-### 1. Run Unit Tests (40 Tests)
+### 1. Run Unit Tests (44 Tests)
 ```bash
 pytest -v tests/test_all.py
 ```

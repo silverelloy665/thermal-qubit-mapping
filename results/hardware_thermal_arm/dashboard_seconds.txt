@@ -1,0 +1,28 @@
+job db6j0o04qg6s73c4sp20: dashboard QPU seconds = PENDING (manual entry)
+
+AUDIT NOTES ON RUNTIME ACCOUNTING & PLAN FALLBACK:
+--------------------------------------------------------------------------------
+1. Job db6j0o04qg6s73c4sp20 (Hardware Thermal-Arm Rerun):
+   - QPU measured seconds: unavailable from runtime job metrics (`job.usage()` returned None).
+   - Dashboard value: PENDING (requires manual entry from IBM Quantum Platform web console).
+   - Local fallback value: 48.0 s (16 circuits x 3.0 s conservative plan estimate).
+
+2. Consistency with Committed Hardware Results (results/hardware/runtime_table.csv):
+   - In results/hardware/runtime_table.csv, the reported 51.0 s run_seconds per job
+     is consistent with the exact same plan fallback mechanism implemented in
+     src/runner_ibm.py (lines 73-80):
+       def extract_qpu_seconds(job, estimate):
+           usage_time = None
+           if hasattr(job, 'usage'):
+               usage_time = job.usage()
+           if isinstance(usage_time, float):
+               return usage_time
+           print(f"Warning: job.usage() returned None or missing, falling back to estimate {estimate}")
+           return estimate
+   - In both cases, runtime job metrics did not supply a float usage, triggering lines 79-80
+     to return the planned estimate:
+       * 17 circuits x 3.0 s = 51.0 s (for the initial 17-circuit hardware batch)
+       * 16 circuits x 3.0 s = 48.0 s (for the 16-circuit thermal-arm rerun)
+   - Neither 51.0 s nor 48.0 s represent measured QPU execution seconds from job metrics.
+     (Note: Committed results in results/hardware/ remain unchanged and unedited).
+

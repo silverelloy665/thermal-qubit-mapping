@@ -492,6 +492,21 @@ def audit_analysis_exposure_and_esp(readme_content: str, analysis_dir="results/a
         if re.search(r"CI\s*\[|\[\s*[-+]?\d+\.\d+[^\]]*\d+\.\d+\s*\]|\\pm\s*\d+\.\d+", rerun_text, re.IGNORECASE):
             return False, "Forbidden confidence interval quoted in thermal rerun section in README."
 
+    # Rule 13 (T8): Fail if README or slide_facts cites thermal_arm_layout_explain as a finding
+    if re.search(r"thermal_arm_layout_explain", readme_content, re.IGNORECASE):
+        return False, "Forbidden citation of thermal_arm_layout_explain found in README."
+    if re.search(r"(?:layout[_\s]*explain|thermal[_\s]*layout[_\s]*explain)\b.*?\b(?:finding|evidence|result|confirms|demonstrates|proves)", readme_content, re.IGNORECASE):
+        return False, "Forbidden citation of layout explain diagnostic as finding in README."
+
+    slide_facts_file = os.path.join(analysis_dir, "slide_facts.txt")
+    if os.path.exists(slide_facts_file):
+        with open(slide_facts_file, "r", encoding="utf-8") as f:
+            sf_content = f.read()
+        if re.search(r"thermal_arm_layout_explain", sf_content, re.IGNORECASE):
+            return False, "Forbidden citation of thermal_arm_layout_explain found in slide_facts.txt."
+        if re.search(r"(?:layout[_\s]*explain|thermal[_\s]*layout[_\s]*explain)\b.*?\b(?:finding|evidence|result|confirms|demonstrates|proves)", sf_content, re.IGNORECASE):
+            return False, "Forbidden citation of layout explain diagnostic as finding in slide_facts.txt."
+
     return True, "Analysis claims verified."
 
 

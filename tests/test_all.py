@@ -1094,12 +1094,31 @@ def test_thermal_arm_layout_explain_report():
     report_path = Path("results/analysis/thermal_arm_layout_explain.txt")
     assert report_path.exists(), "results/analysis/thermal_arm_layout_explain.txt must exist"
     text = report_path.read_text(encoding="utf-8")
+    assert "OFFLINE DIAGNOSTIC on FakeMarrakesh, NOT the live target used for layout selection" in text
+    assert "COMPUTED SIDE-BY-SIDE EXCESS COMPARISON" in text
     assert "BENCHMARK: BV-5" in text
     assert "Under esp_standard: Plain" in text
     assert "Under esp_thermal:  Thermal" in text
     assert "BENCHMARK: QFT-5" in text
     assert "Qubit Set Equivalence: True" in text
     assert "No causal claims" in text
+    assert "Mechanism:" not in text
+    assert "0.00105" not in text
+
+def test_claim_check_thermal_arm_layout_explain_refusal():
+    """Verify claim_check refuses citations of thermal_arm_layout_explain as finding."""
+    from scripts.claim_check import audit_analysis_exposure_and_esp
+    # 1. Direct citation in README -> refusal
+    bad1 = "Hardware execution provides no evidence regarding the thermal term. Analysis in thermal_arm_layout_explain shows why layouts were selected."
+    ok1, msg1 = audit_analysis_exposure_and_esp(bad1)
+    assert not ok1
+    assert "Forbidden citation of thermal_arm_layout_explain" in msg1
+
+    # 2. Citing layout explain diagnostic as finding -> refusal
+    bad2 = "Hardware execution provides no evidence regarding the thermal term. Our layout explain finding demonstrates that thermal penalty degraded plain layout."
+    ok2, msg2 = audit_analysis_exposure_and_esp(bad2)
+    assert not ok2
+    assert "Forbidden citation of layout explain diagnostic as finding" in msg2
 
 
 
