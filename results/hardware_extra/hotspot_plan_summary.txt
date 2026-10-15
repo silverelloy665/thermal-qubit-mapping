@@ -1,7 +1,9 @@
 ================================================================================
 [OFFLINE DRY RUN ON FakeMarrakesh - NOT EVIDENCE - DO NOT CITE]
-PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN
-Timestamp: 2026-10-15T20:03:27.633292+00:00
+[DESCRIPTIVE, NOT CONFIRMATORY - N_primary < 4]
+[WARNING] Stored allowance was checked at 2026-10-11T12:00:00+00:00 (104.8 h ago > 24h).
+PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN (v2.2)
+Timestamp: 2026-10-15T20:50:16.466030+00:00
 ================================================================================
 
 1. BACKEND & CALIBRATION METADATA
@@ -9,6 +11,8 @@ Timestamp: 2026-10-15T20:03:27.633292+00:00
   Backend:                  fake_marrakesh
   Calibration Timestamp:    2025-02-26T14:52:45-05:00
   Newest p1 Source:         results/hardware/p1_ibm_marrakesh_20261009T001839_0530.json
+  Allowance Source:         dashboard 11 Oct 2026 (TODO: update before live run)
+  Allowance Checked At:     2026-10-11T12:00:00+00:00
   Excess Metric Label:      excess P(1|0) over control median or calibrated prob_meas1_prep0
 
 2. REGION AND LAYOUT SELECTION LOGS
@@ -47,26 +51,28 @@ R3      bv      [7, 8, 17, 26, 27] [6, 7, 8, 17, 27]  0.7808    0.9186    5/8 (+
 R3      mirror  [7, 17, 25, 26, 27] [7, 8, 17, 27, 28] 0.4529    0.7301    54/58 (+4) UNMATCHABLE   NOT EXECUTED 
 -------------------------------------------------------------------------------------------------------------------
 
-4. CIRCUIT COUNT & BUDGET SCENARIOS (Checkpoint V)
+4. CIRCUIT COUNT & BUDGET SCENARIOS (Checkpoint W / v2.2)
 --------------------------------------------------------------------------------
-  Circuit Count Before De-dup:   4
-  Circuit Count After De-dup:    4
+  Circuit Count Before De-dup:   5
+  Circuit Count After De-dup:    5
   Estimated Seconds Per Circuit: 3.000 s
-  Estimated Seconds Per Job:     12.000 s (4 circuits x 3.000 s)
-  Total Estimated Plan Seconds:  24.000 s (2 reps)
+  Estimated Seconds Per Job:     15.000 s (5 circuits x 3.000 s)
+  Total Estimated Plan Seconds:  30.000 s (2 reps)
   Extra Run Budget Cap:          110.0 s
-  Cap Verification:              PASS (24.0 s <= 110.0 s)
-  Dashboard Allowance Remaining: 279.0 s
+  Cap Verification:              PASS (30.0 s <= 110.0 s)
+  Dashboard Allowance Remaining: 279.0 s (Source: dashboard 11 Oct 2026 (TODO: update before live run))
+  Allowance Checked At:          2026-10-11T12:00:00+00:00
+  [WARNING] Allowance verification is older than 24h (104.8 h ago). Update before live execution.
   Reserve Buffer Requirement:    150.0 s
   measure_p1_v2 Dry-Run Estimate:72.0 s (24 PUBs @ 3.00 s/PUB)
 
   BUDGET SCENARIOS:
-  - Scenario 1 (p1v2 only):      Spend: 75.0 s | Remaining: 204.0 s
-  - Scenario 2 (p1v2 + plan):    Spend: 99.0 s | Remaining: 180.0 s
-  - Scenario 3 (with reserve):   Remaining Buffer after 150s reserve: +30.0 s (PASS)
+  - Scenario 1 (p1v2 only):      Spend: 73.5 s | Remaining: 205.5 s
+  - Scenario 2 (p1v2 + plan):    Spend: 103.5 s | Remaining: 175.5 s
+  - Scenario 3 (with reserve):   Remaining Buffer after 150s reserve: +25.5 s (PASS)
 
 5. PLAN INTEGRITY & ARTIFACTS
 --------------------------------------------------------------------------------
   Plan Path:                     results/hardware_extra/plan.json
-  Plan Hash:                     c9d9ce817ad27842-5a64895d3ffa4dec-9987c7d0a3b99213-cb5561ed2faf056a
+  Plan Hash:                     8b06973d4e984aa3-17302599bd026356-f6683cc5f518e2fb-331e0b56c09f726c
 ================================================================================

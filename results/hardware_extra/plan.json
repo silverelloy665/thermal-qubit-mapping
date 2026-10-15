@@ -4,10 +4,12 @@
   "excess_metric_label": "excess P(1|0) over isolated control qubits median or calibrated prob_meas1_prep0",
   "confounding_rule": "Cells with |native 2q difference HOT vs CLEAN| > 4 or unmatchable ESP are dropped from execution.",
   "decision_rule": "hot-spot penalty confirmed for a benchmark only if among primary cells (matched & non-confounded), pooled CLEAN - HOT Newcombe 95% CI lower bound > 0 and diff >= 0.5 pt in >= 50% of cells with N_primary >= 4.",
-  "comparator_rule": "CLEAN_matched = argmax ESP_std among clean connected 5q subgraphs in B_4(h) with ESP_std <= ESP_std(HOT), within 0.03, and |Delta 2Q| <= 4; else UNMATCHABLE (not executed).",
+  "comparator_rule": "CLEAN_matched = argmax ESP_std among clean connected 5q subgraphs in B_4(h) with ESP_std <= ESP_std(HOT), within 0.03, and |Delta 2Q| <= 4; else UNMATCHABLE (not executed). Negative control CLEAN2 matched similarly.",
   "confounding_threshold_2q": 4,
   "power_status": "INCONCLUSIVE (underpowered: 2 primary cells < 4 required)",
   "primary_cell_count": 2,
+  "is_underpowered": true,
+  "descriptive_mode": false,
   "backend": "fake_marrakesh",
   "calibration_timestamp": "2025-02-26T14:52:45-05:00",
   "p1_source_file": "results/hardware/p1_ibm_marrakesh_20261009T001839_0530.json",
@@ -15,31 +17,34 @@
   "circuit_hashes": [
     "dd0c1b19fc0ffd2f-c0655dad1dd9f2b3-75defc324107c39e-fb0dd7d450561f28",
     "f1f5f90ecb9d686d-c0be4c4e4948a626-90a8d582dd4fbad1-21e6c75f13f29664",
+    "1f0efdc66888e1f3-b263c69c86386825-b79b27b7f9998429-6e157d372702acab",
     "865bb1f4f2e4395a-30a346ea3afe9afd-019686a013a7029f-78a6905f915b7088",
     "33773d4e1d524cb9-679849d73a7f1d6c-e509e03154ab79bb-42502b1bf1aa29cc"
   ],
-  "circuit_count_before": 4,
-  "circuit_count_after": 4,
+  "circuit_count_before": 5,
+  "circuit_count_after": 5,
   "per_circuit_estimate_seconds": 3.0,
-  "per_job_estimate_seconds": 12.0,
-  "total_estimate_seconds": 24.0,
+  "per_job_estimate_seconds": 15.0,
+  "total_estimate_seconds": 30.0,
   "p1v2_estimate_seconds": 72.0,
   "allowance_remaining_s": 279.0,
+  "allowance_source": "dashboard 11 Oct 2026 (TODO: update before live run)",
+  "allowance_checked_at": "2026-10-11T12:00:00+00:00",
   "reserve_s": 150.0,
   "extra_run_cap_s": 110.0,
-  "remaining_after_run_s": 180.0,
+  "remaining_after_run_s": 175.5,
   "budget_scenarios": {
     "scenario1_p1v2_only": {
-      "spend": 75.0,
-      "remaining": 204.0
+      "spend": 73.5,
+      "remaining": 205.5
     },
     "scenario2_p1v2_plus_plan": {
-      "spend": 99.0,
-      "remaining": 180.0
+      "spend": 103.5,
+      "remaining": 175.5
     },
     "scenario3_with_reserve": {
-      "spend": 99.0,
-      "remaining_buffer": 30.0,
+      "spend": 103.5,
+      "remaining_buffer": 25.5,
       "reserve_s": 150.0
     }
   },
@@ -93,6 +98,11 @@
             129,
             137
           ],
+          "has_clean2": false,
+          "clean2_layout": null,
+          "clean2_esp": -1.0,
+          "clean2_2q": 0,
+          "clean2_depth": 0,
           "thermal_esp_layout": [
             126,
             127,
@@ -130,6 +140,17 @@
             137,
             147
           ],
+          "has_clean2": true,
+          "clean2_layout": [
+            126,
+            127,
+            128,
+            137,
+            147
+          ],
+          "clean2_esp": 0.866099106675298,
+          "clean2_2q": 8,
+          "clean2_depth": 20,
           "thermal_esp_layout": [
             126,
             127,
@@ -167,6 +188,11 @@
             137,
             147
           ],
+          "has_clean2": false,
+          "clean2_layout": null,
+          "clean2_esp": -1.0,
+          "clean2_2q": 0,
+          "clean2_depth": 0,
           "thermal_esp_layout": [
             127,
             128,
@@ -232,6 +258,11 @@
             40,
             41
           ],
+          "has_clean2": false,
+          "clean2_layout": null,
+          "clean2_esp": -1.0,
+          "clean2_2q": 0,
+          "clean2_depth": 0,
           "thermal_esp_layout": [
             20,
             21,
@@ -269,6 +300,11 @@
             41,
             42
           ],
+          "has_clean2": false,
+          "clean2_layout": null,
+          "clean2_esp": -1.0,
+          "clean2_2q": 0,
+          "clean2_depth": 0,
           "thermal_esp_layout": [
             21,
             36,
@@ -306,6 +342,11 @@
             40,
             41
           ],
+          "has_clean2": false,
+          "clean2_layout": null,
+          "clean2_esp": -1.0,
+          "clean2_2q": 0,
+          "clean2_depth": 0,
           "thermal_esp_layout": [
             21,
             36,
@@ -374,6 +415,11 @@
             27,
             28
           ],
+          "has_clean2": false,
+          "clean2_layout": null,
+          "clean2_esp": -1.0,
+          "clean2_2q": 0,
+          "clean2_depth": 0,
           "thermal_esp_layout": [
             6,
             7,
@@ -411,6 +457,11 @@
             17,
             27
           ],
+          "has_clean2": false,
+          "clean2_layout": null,
+          "clean2_esp": -1.0,
+          "clean2_2q": 0,
+          "clean2_depth": 0,
           "thermal_esp_layout": [
             6,
             7,
@@ -448,6 +499,11 @@
             27,
             28
           ],
+          "has_clean2": false,
+          "clean2_layout": null,
+          "clean2_esp": -1.0,
+          "clean2_2q": 0,
+          "clean2_depth": 0,
           "thermal_esp_layout": [
             6,
             7,
@@ -470,5 +526,5 @@
       }
     }
   ],
-  "plan_hash": "c9d9ce817ad278425a64895d3ffa4dec9987c7d0a3b99213cb5561ed2faf056a"
+  "plan_hash": "8b06973d4e984aa317302599bd026356f6683cc5f518e2fb331e0b56c09f726c"
 }

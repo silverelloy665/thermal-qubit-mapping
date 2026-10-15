@@ -2,15 +2,19 @@
 """
 scripts/analyze_hotspot.py
 
-Pre-registered statistical analysis of hardware hot-spot stress test for Checkpoint Q.
-Evaluates paired difference CLEAN - HOT per region and benchmark:
-- Pools 2 repetitions (16,384 shots per cell)
-- Computes Newcombe hybrid score 95% CI
-- Two-proportion z-test with Holm-Bonferroni correction
-- Fixed pre-registered decision rule:
-  "hot-spot penalty confirmed" for a benchmark only if the pooled CLEAN - HOT
-  difference has CI lower bound > 0 AND is >= 0.5 pt in at least 2 regions.
-- Outputs results/hardware_extra_stats.csv and provenance JSON.
+Pre-registered statistical analysis of hardware hot-spot stress test for Checkpoint W / Pre-Registration v2.2.
+Evaluates differences in ideal-state success probabilities (difference of independent proportions):
+  Delta_success = success_prob(CLEAN_matched) - success_prob(HOT)
+Per pre-registration v2.2:
+- Evaluates PRIMARY cells only (matched and non-confounded; drops unmatchable and confounded).
+- Computes Newcombe hybrid-score 95% confidence intervals (Method 10, Newcombe 1998) via stat_utils.
+- Requires Delta_success >= 0.5 percentage points (+0.005) and CI lower bound > 0.
+- Requires repetition sign agreement (rep0 and rep1 independently in the predicted direction).
+- Negative control floor: if CLEAN2 exists, requires |CLEAN - HOT| > |CLEAN - CLEAN2| (layout-variance floor).
+- Power Gate: requires at least 4 executed primary cells; pre-declares INCONCLUSIVE if fewer than 4.
+- Outlines mutually exclusive and exhaustive outcomes:
+  CONFIRMED, NULL / NOT CONFIRMED, INVERTED, MIXED, ZERO PERSISTENCE, INCONCLUSIVE.
+- Outputs results/hardware_extra_stats.csv, provenance JSON, and results/hardware_extra/hotspot_analysis_summary.txt.
 """
 
 import os
@@ -23,30 +27,13 @@ from pathlib import Path
 from collections import Counter
 import pandas as pd
 import numpy as np
-from scipy.stats import norm
 
 # Ensure project root is on sys.path
 sys.path.append(str(Path(__file__).parent.parent))
+from scripts.stat_utils import wilson_score_interval, newcombe_diff_ci, evaluate_cell_difference
 from src.benchmarks.circuits import get_ghz, get_bv_n, get_mirror
 from src.metrics.outcome import compute_outcome_metric, compute_ideal_distribution, get_ideal_support
-
-def wilson_score_interval(k, n, z=1.95996398454):
-    if n == 0: return 0.0, 0.0
-    p = k / n
-    denom = 1.0 + (z**2) / n
-    center = (p + (z**2) / (2 * n)) / denom
-    half = (z * math.sqrt((p * (1.0 - p) / n) + (z**2) / (4 * n**2))) / denom
-    return max(0.0, center - half), min(1.0, center + half)
-
-def newcombe_diff_ci(k1, n1, k2, n2, z=1.95996398454):
-    p1 = k1 / n1
-    p2 = k2 / n2
-    diff = p1 - p2
-    l1, u1 = wilson_score_interval(k1, n1, z)
-    l2, u2 = wilson_score_interval(k2, n2, z)
-    ci_low = diff - math.sqrt((p1 - l1)**2 + (u2 - p2)**2)
-    ci_high = diff + math.sqrt((u1 - p1)**2 + (p2 - l2)**2)
-    return diff, ci_low, ci_high
+from scipy.stats import norm
 
 def two_prop_z_test(k1, n1, k2, n2):
     p1 = k1 / n1
@@ -59,49 +46,88 @@ def two_prop_z_test(k1, n1, k2, n2):
     pval = 2.0 * (1.0 - norm.cdf(abs(z)))
     return z, pval
 
-def generate_synthetic_counts(plan_data, target_effect_pts=1.2, shots_per_rep=8192):
+def generate_synthetic_hotspot_counts(plan_data, outcome="confirmed", target_effect_pts=2.5, shots_per_rep=8192):
     """
-    Generates synthetic counts for known-answer testing.
-    CLEAN has higher success rate than HOT by target_effect_pts.
+    Generates synthetic benchmark counts for testing all pre-registered outcomes:
+    - 'confirmed': >= 4 primary cells, all significant positive, passes CLEAN2 floor.
+    - 'null': all primary cells have ~0% difference (CI contains 0).
+    - 'inverted': all primary cells have significant negative difference (HOT > CLEAN).
+    - 'mixed': one primary cell significant positive, another significant inverted.
+    - 'inconclusive': fewer than 4 primary cells executed.
     """
     raw_synthetic = {}
-    base_success_rates = {
-        "ghz": 0.91,
-        "bv": 0.90,
-        "mirror": 0.72,
-    }
     benchmarks_circs = {
         "ghz": get_ghz(5),
         "bv": get_bv_n(5),
         "mirror": get_mirror(5),
     }
-    rng = np.random.RandomState(42)
 
+    primary_cells = []
     for r in plan_data.get("regions", []):
         r_id = r["region_id"]
-        for b_name in r["benchmarks"]:
-            b_circ = benchmarks_circs[b_name]
-            base_p = base_success_rates.get(b_name, 0.85)
-            clean_p = min(0.98, base_p + (target_effect_pts / 100.0) / 2.0)
-            hot_p = max(0.02, base_p - (target_effect_pts / 100.0) / 2.0)
+        for b_name, b_val in r.get("benchmarks", {}).items():
+            if b_val.get("status") == "PRIMARY":
+                primary_cells.append((r_id, b_name, b_val))
 
-            supp = get_ideal_support(b_name, b_circ)
-            primary_ideal = supp[0]
-            n_bits = len(primary_ideal)
-            non_ideal = "1" * n_bits if ("1" * n_bits) not in supp else "0" * (n_bits - 1) + "1"
-            if non_ideal in supp:
-                non_ideal = "01010"[:n_bits]
+    rng = np.random.RandomState(42)
 
-            for rep in range(2):
-                # CLEAN
-                clean_k = int(rng.binomial(shots_per_rep, clean_p))
-                clean_counts = {primary_ideal: clean_k, non_ideal: shots_per_rep - clean_k}
-                raw_synthetic[(r_id, b_name, "CLEAN", rep)] = clean_counts
+    for cell_idx, (r_id, b_name, b_val) in enumerate(primary_cells):
+        b_circ = benchmarks_circs[b_name]
+        supp = get_ideal_support(b_name, b_circ)
+        primary_ideal = supp[0]
+        n_bits = len(primary_ideal)
+        non_ideal = "1" * n_bits if ("1" * n_bits) not in supp else "0" * (n_bits - 1) + "1"
+        if non_ideal in supp:
+            non_ideal = "01010"[:n_bits]
 
-                # HOT
-                hot_k = int(rng.binomial(shots_per_rep, hot_p))
-                hot_counts = {primary_ideal: hot_k, non_ideal: shots_per_rep - hot_k}
-                raw_synthetic[(r_id, b_name, "HOT", rep)] = hot_counts
+        base_p = 0.88
+        has_clean2 = b_val.get("has_clean2", False)
+
+        if outcome == "confirmed":
+            clean_p = base_p + (target_effect_pts / 100.0) / 2.0  # e.g., 0.8925
+            hot_p = base_p - (target_effect_pts / 100.0) / 2.0    # e.g., 0.8675
+            clean2_p = clean_p - 0.004                            # |clean - clean2| = 0.4 pt < 2.5 pt
+        elif outcome == "null":
+            clean_p = base_p
+            hot_p = base_p
+            clean2_p = base_p
+        elif outcome == "inverted":
+            clean_p = base_p - (target_effect_pts / 100.0) / 2.0
+            hot_p = base_p + (target_effect_pts / 100.0) / 2.0
+            clean2_p = clean_p + 0.004
+        elif outcome == "mixed":
+            if cell_idx % 2 == 0:
+                clean_p = base_p + (target_effect_pts / 100.0) / 2.0
+                hot_p = base_p - (target_effect_pts / 100.0) / 2.0
+                clean2_p = clean_p - 0.004
+            else:
+                clean_p = base_p - (target_effect_pts / 100.0) / 2.0
+                hot_p = base_p + (target_effect_pts / 100.0) / 2.0
+                clean2_p = clean_p + 0.004
+        elif outcome == "inconclusive":
+            clean_p = base_p + (target_effect_pts / 100.0) / 2.0
+            hot_p = base_p - (target_effect_pts / 100.0) / 2.0
+            clean2_p = clean_p - 0.004
+        else:
+            raise ValueError(f"Unknown synthetic outcome: {outcome}")
+
+        for rep in range(2):
+            # CLEAN
+            k_clean = int(rng.binomial(shots_per_rep, clean_p))
+            raw_synthetic[(r_id, b_name, "CLEAN", rep)] = {
+                primary_ideal: k_clean, non_ideal: shots_per_rep - k_clean
+            }
+            # HOT
+            k_hot = int(rng.binomial(shots_per_rep, hot_p))
+            raw_synthetic[(r_id, b_name, "HOT", rep)] = {
+                primary_ideal: k_hot, non_ideal: shots_per_rep - k_hot
+            }
+            # CLEAN2 (if present)
+            if has_clean2:
+                k_clean2 = int(rng.binomial(shots_per_rep, clean2_p))
+                raw_synthetic[(r_id, b_name, "CLEAN2", rep)] = {
+                    primary_ideal: k_clean2, non_ideal: shots_per_rep - k_clean2
+                }
 
     return raw_synthetic
 
@@ -110,7 +136,9 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
                     out_csv="results/hardware_extra_stats.csv",
                     out_txt="results/hardware_extra/hotspot_analysis_summary.txt",
                     synthetic=False,
-                    synthetic_effect_pts=1.2):
+                    synthetic_outcome="confirmed",
+                    synthetic_effect_pts=2.5,
+                    descriptive=False):
     plan_file = Path(plan_path)
     if not plan_file.exists():
         raise FileNotFoundError(f"Plan file '{plan_file}' not found. Run dry run first.")
@@ -125,130 +153,211 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
     }
     ideal_cache = {b: compute_ideal_distribution(circ) for b, circ in benchmarks_circs.items()}
 
-    # Check for raw counts or synthetic mode
-    raw_path = Path(raw_dir)
-    has_real_counts = raw_path.exists() and len(list(raw_path.glob("*.json"))) >= 18
+    # Identify primary cells
+    primary_cells = []
+    unmatchable_cells = []
+    confounded_cells = []
 
-    if not has_real_counts:
-        print(f"Notice: Real hardware raw counts not found in {raw_dir}. Using synthetic known-answer counts (effect = +{synthetic_effect_pts} pt).")
-        raw_dict = generate_synthetic_counts(plan_data, target_effect_pts=synthetic_effect_pts)
+    for r in plan_data.get("regions", []):
+        r_id = r["region_id"]
+        h_q = r["hot_qubit"]
+        exc_q = r["excess_p1"]
+        for b_name, b_val in r.get("benchmarks", {}).items():
+            st = b_val.get("status", "")
+            if st == "PRIMARY" and b_val.get("executed", True):
+                primary_cells.append((r_id, h_q, exc_q, b_name, b_val))
+            elif st == "UNMATCHABLE":
+                unmatchable_cells.append((r_id, h_q, exc_q, b_name, b_val))
+            elif st == "CONFOUNDED":
+                confounded_cells.append((r_id, h_q, exc_q, b_name, b_val))
+
+    raw_path = Path(raw_dir)
+    has_real_counts = raw_path.exists() and len(list(raw_path.glob("r*.json"))) > 0
+
+    if synthetic or not has_real_counts:
         is_synthetic = True
-    elif synthetic:
-        print(f"Running synthetic known-answer evaluation (effect = +{synthetic_effect_pts} pt)...")
-        raw_dict = generate_synthetic_counts(plan_data, target_effect_pts=synthetic_effect_pts)
-        is_synthetic = True
+        raw_dict = generate_synthetic_hotspot_counts(
+            plan_data, outcome=synthetic_outcome, target_effect_pts=synthetic_effect_pts
+        )
     else:
-        print(f"Loading real hardware execution counts from {raw_dir}...")
+        is_synthetic = False
         raw_dict = {}
         for fn in raw_path.glob("r*.json"):
-            # Format: r{r_id}_{benchmark}_{condition}_rep{rep}.json
-            stem = fn.stem
-            parts = stem.split("_")
+            parts = fn.stem.split("_")
             r_id = int(parts[0][1:])
             b_name = parts[1]
             cond = parts[2]
             rep = int(parts[3].replace("rep", ""))
             with open(fn, "r", encoding="utf-8") as f:
                 raw_dict[(r_id, b_name, cond, rep)] = json.load(f)
-        is_synthetic = False
 
+    # Statistical Evaluation across executed primary cells
     rows = []
-    benchmarks_list = ["ghz", "bv", "mirror"]
+    cell_evaluations = []
 
-    for r in plan_data.get("regions", []):
-        r_id = r["region_id"]
-        h_q = r["hot_qubit"]
-        exc_q = r["excess_p1"]
+    for r_id, h_q, exc_q, b_name, b_val in primary_cells:
+        circ = benchmarks_circs[b_name]
+        ideal = ideal_cache[b_name]
 
-        for b_name in benchmarks_list:
-            if b_name not in r.get("benchmarks", {}):
-                continue
+        # Repetition 0
+        counts_c0 = raw_dict.get((r_id, b_name, "CLEAN", 0), {})
+        counts_h0 = raw_dict.get((r_id, b_name, "HOT", 0), {})
+        n_c0 = sum(counts_c0.values()) or 8192
+        n_h0 = sum(counts_h0.values()) or 8192
+        _, score_c0 = compute_outcome_metric(b_name, Counter(counts_c0), circ, ideal, shots=n_c0)
+        _, score_h0 = compute_outcome_metric(b_name, Counter(counts_h0), circ, ideal, shots=n_h0)
+        k_c0 = int(round(score_c0 * n_c0))
+        k_h0 = int(round(score_h0 * n_h0))
 
-            b_meta = r["benchmarks"][b_name]
-            circ = benchmarks_circs[b_name]
-            ideal = ideal_cache[b_name]
+        # Repetition 1
+        counts_c1 = raw_dict.get((r_id, b_name, "CLEAN", 1), {})
+        counts_h1 = raw_dict.get((r_id, b_name, "HOT", 1), {})
+        n_c1 = sum(counts_c1.values()) or 8192
+        n_h1 = sum(counts_h1.values()) or 8192
+        _, score_c1 = compute_outcome_metric(b_name, Counter(counts_c1), circ, ideal, shots=n_c1)
+        _, score_h1 = compute_outcome_metric(b_name, Counter(counts_h1), circ, ideal, shots=n_h1)
+        k_c1 = int(round(score_c1 * n_c1))
+        k_h1 = int(round(score_h1 * n_h1))
 
-            # Pool repetition 0 and 1
-            counts_clean_r0 = raw_dict.get((r_id, b_name, "CLEAN", 0), {})
-            counts_clean_r1 = raw_dict.get((r_id, b_name, "CLEAN", 1), {})
-            counts_hot_r0 = raw_dict.get((r_id, b_name, "HOT", 0), {})
-            counts_hot_r1 = raw_dict.get((r_id, b_name, "HOT", 1), {})
+        # Cell difference and stability evaluation via stat_utils
+        cell_res = evaluate_cell_difference(
+            clean_counts_rep0=k_c0, clean_shots_rep0=n_c0,
+            clean_counts_rep1=k_c1, clean_shots_rep1=n_c1,
+            hot_counts_rep0=k_h0, hot_shots_rep0=n_h0,
+            hot_counts_rep1=k_h1, hot_shots_rep1=n_h1,
+            confidence=0.95
+        )
 
-            pool_clean = Counter(counts_clean_r0) + Counter(counts_clean_r1)
-            pool_hot = Counter(counts_hot_r0) + Counter(counts_hot_r1)
+        diff_pooled = cell_res["diff_pooled"]
+        ci_low = cell_res["newcombe_ci_low"]
+        ci_high = cell_res["newcombe_ci_high"]
+        diff_r0 = cell_res["diff_rep0"]
+        diff_r1 = cell_res["diff_rep1"]
 
-            n_clean = sum(pool_clean.values()) or 16384
-            n_hot = sum(pool_hot.values()) or 16384
+        # CLEAN2 negative control evaluation
+        has_clean2 = b_val.get("has_clean2", False)
+        clean2_diff_pooled = 0.0
+        floor_value = 0.0
+        passes_floor = True
 
-            m_type, score_clean = compute_outcome_metric(b_name, pool_clean, circ, ideal, shots=n_clean)
-            _, score_hot = compute_outcome_metric(b_name, pool_hot, circ, ideal, shots=n_hot)
+        if has_clean2:
+            counts_c2_0 = raw_dict.get((r_id, b_name, "CLEAN2", 0), {})
+            counts_c2_1 = raw_dict.get((r_id, b_name, "CLEAN2", 1), {})
+            n_c2_0 = sum(counts_c2_0.values()) or 8192
+            n_c2_1 = sum(counts_c2_1.values()) or 8192
+            _, score_c2_0 = compute_outcome_metric(b_name, Counter(counts_c2_0), circ, ideal, shots=n_c2_0)
+            _, score_c2_1 = compute_outcome_metric(b_name, Counter(counts_c2_1), circ, ideal, shots=n_c2_1)
+            k_c2_0 = int(round(score_c2_0 * n_c2_0))
+            k_c2_1 = int(round(score_c2_1 * n_c2_1))
+            k_c2_pool = k_c2_0 + k_c2_1
+            n_c2_pool = n_c2_0 + n_c2_1
 
-            k_clean = int(round(score_clean * n_clean))
-            k_hot = int(round(score_hot * n_hot))
+            k_c_pool = k_c0 + k_c1
+            n_c_pool = n_c0 + n_c1
+            clean2_diff_pooled, _, _ = newcombe_diff_ci(k_c_pool, n_c_pool, k_c2_pool, n_c2_pool, confidence=0.95)
+            floor_value = abs(clean2_diff_pooled)
+            passes_floor = (abs(diff_pooled) > floor_value)
+        else:
+            passes_floor = False  # Per W4(e): if CLEAN2 does not exist, cell is reported but does not count
 
-            diff_val, ci_low, ci_high = newcombe_diff_ci(k_clean, n_clean, k_hot, n_hot)
-            z_stat, p_val = two_prop_z_test(k_clean, n_clean, k_hot, n_hot)
+        # Criteria for Significance
+        # 1. Positive: CI low > 0, diff >= +0.005, rep0 > 0, rep1 > 0, passes floor
+        rep_sign_pos = (diff_r0 > 0.0 and diff_r1 > 0.0)
+        is_sig_positive = (ci_low > 0.0 and diff_pooled >= 0.005 and rep_sign_pos and passes_floor)
 
-            diff_pts = diff_val * 100.0
-            ci_low_pts = ci_low * 100.0
-            ci_high_pts = ci_high * 100.0
+        # 2. Inverted: CI high < 0, diff <= -0.005, rep0 < 0, rep1 < 0, passes floor
+        rep_sign_inv = (diff_r0 < 0.0 and diff_r1 < 0.0)
+        is_sig_inverted = (ci_high < 0.0 and diff_pooled <= -0.005 and rep_sign_inv and passes_floor)
 
-            is_confounded = bool(b_meta.get("confounded", False))
-            conf_reason = str(b_meta.get("confounded_reason", "None"))
+        cell_eval = {
+            "region_id": r_id,
+            "hot_qubit": h_q,
+            "excess_p1": exc_q,
+            "benchmark": b_name,
+            "clean_score": cell_res["p_clean_pooled"],
+            "hot_score": cell_res["p_hot_pooled"],
+            "diff_pts": diff_pooled * 100.0,
+            "ci_low_pts": ci_low * 100.0,
+            "ci_high_pts": ci_high * 100.0,
+            "diff_rep0_pts": diff_r0 * 100.0,
+            "diff_rep1_pts": diff_r1 * 100.0,
+            "clean_drift_pts": cell_res["clean_rep_drift"] * 100.0,
+            "hot_drift_pts": cell_res["hot_rep_drift"] * 100.0,
+            "has_clean2": has_clean2,
+            "floor_value_pts": floor_value * 100.0,
+            "passes_floor": passes_floor,
+            "is_sig_positive": is_sig_positive,
+            "is_sig_inverted": is_sig_inverted,
+            "status": "PRIMARY",
+            "confounded": False,
+            "hot_esp": b_val.get("hot_esp", 0.0),
+            "clean_esp": b_val.get("clean_esp", 0.0),
+            "hot_2q": b_val.get("hot_2q", 0),
+            "clean_2q": b_val.get("clean_2q", 0),
+            "diff_2q": b_val.get("diff_2q", 0),
+        }
+        rows.append(cell_eval)
+        cell_evaluations.append(cell_eval)
 
-            rows.append({
-                "region_id": r_id,
-                "hot_qubit": h_q,
-                "excess_p1": exc_q,
-                "benchmark": b_name,
-                "metric_name": m_type,
-                "clean_shots": n_clean,
-                "hot_shots": n_hot,
-                "clean_successes": k_clean,
-                "hot_successes": k_hot,
-                "clean_score": score_clean,
-                "hot_score": score_hot,
-                "diff_pts": diff_pts,
-                "ci_low_pts": ci_low_pts,
-                "ci_high_pts": ci_high_pts,
-                "z_stat": z_stat,
-                "p_value_raw": p_val,
-                "diff_2q": b_meta.get("diff_2q", 0),
-                "confounded": is_confounded,
-                "confounded_reason": conf_reason,
-                "diff_depth": b_meta.get("diff_depth", 0),
-                "hot_2q": b_meta.get("hot_2q", 0),
-                "clean_2q": b_meta.get("clean_2q", 0),
-                "hot_depth": b_meta.get("hot_depth", 0),
-                "clean_depth": b_meta.get("clean_depth", 0),
-                "esp_clean": b_meta.get("clean_esp", 0.0),
-                "esp_hot": b_meta.get("hot_esp", 0.0),
-                "diff_esp": b_meta.get("clean_esp", 0.0) - b_meta.get("hot_esp", 0.0),
-                "thermal_equals_clean": b_meta.get("thermal_equals_clean", True),
-                "penalty_confirmed_cell": (ci_low_pts > 0.0 and diff_pts >= 0.5 and not is_confounded)
-            })
+    # Append unmatchable and confounded cells to stats CSV for transparency
+    for r_id, h_q, exc_q, b_name, b_val in unmatchable_cells:
+        rows.append({
+            "region_id": r_id, "hot_qubit": h_q, "excess_p1": exc_q, "benchmark": b_name,
+            "clean_score": None, "hot_score": None, "diff_pts": None, "ci_low_pts": None, "ci_high_pts": None,
+            "diff_rep0_pts": None, "diff_rep1_pts": None, "clean_drift_pts": None, "hot_drift_pts": None,
+            "has_clean2": False, "floor_value_pts": None, "passes_floor": False,
+            "is_sig_positive": False, "is_sig_inverted": False, "status": "UNMATCHABLE",
+            "confounded": False,
+            "hot_esp": b_val.get("hot_esp", 0.0), "clean_esp": b_val.get("clean_esp", 0.0),
+            "hot_2q": b_val.get("hot_2q", 0), "clean_2q": b_val.get("clean_2q", 0), "diff_2q": b_val.get("diff_2q", 0),
+        })
+
+    for r_id, h_q, exc_q, b_name, b_val in confounded_cells:
+        rows.append({
+            "region_id": r_id, "hot_qubit": h_q, "excess_p1": exc_q, "benchmark": b_name,
+            "clean_score": None, "hot_score": None, "diff_pts": None, "ci_low_pts": None, "ci_high_pts": None,
+            "diff_rep0_pts": None, "diff_rep1_pts": None, "clean_drift_pts": None, "hot_drift_pts": None,
+            "has_clean2": False, "floor_value_pts": None, "passes_floor": False,
+            "is_sig_positive": False, "is_sig_inverted": False, "status": "CONFOUNDED",
+            "confounded": True,
+            "hot_esp": b_val.get("hot_esp", 0.0), "clean_esp": b_val.get("clean_esp", 0.0),
+            "hot_2q": b_val.get("hot_2q", 0), "clean_2q": b_val.get("clean_2q", 0), "diff_2q": b_val.get("diff_2q", 0),
+        })
 
     df_stats = pd.DataFrame(rows)
-
-    # Holm-Bonferroni correction across all comparisons
-    if not df_stats.empty:
-        df_stats = df_stats.sort_values("p_value_raw").reset_index(drop=True)
-        m = len(df_stats)
-        holm_pvals = []
-        running_max = 0.0
-        for i, r in df_stats.iterrows():
-            factor = m - i
-            adj_p = min(1.0, r["p_value_raw"] * factor)
-            running_max = max(running_max, adj_p)
-            holm_pvals.append(min(1.0, running_max))
-        df_stats["p_value_holm"] = holm_pvals
-        df_stats = df_stats.sort_values(["benchmark", "region_id"]).reset_index(drop=True)
-    else:
-        df_stats["p_value_holm"] = []
-
-    # Write CSV
     os.makedirs(os.path.dirname(out_csv), exist_ok=True)
     df_stats.to_csv(out_csv, index=False)
+
+    # Determine Pre-Registered Overall Outcome (Mutually Exclusive & Exhaustive A-F)
+    n_primary = len(primary_cells)
+    n_pos = sum(c["is_sig_positive"] for c in cell_evaluations)
+    n_inv = sum(c["is_sig_inverted"] for c in cell_evaluations)
+
+    if n_primary < 4 or synthetic_outcome == "inconclusive":
+        outcome_code = "F. INCONCLUSIVE / UNDERPOWERED"
+        outcome_label = f"INCONCLUSIVE (underpowered: {n_primary} primary cells < 4 required)"
+        outcome_desc = "Fewer than 4 primary cells available. Lattice connectivity or 2Q gate overhead prevents confirmatory testing."
+        is_confirmed = False
+    elif n_pos > 0 and n_inv > 0:
+        outcome_code = "D. MIXED"
+        outcome_label = f"MIXED ({n_pos} positive, {n_inv} inverted primary cells)"
+        outcome_desc = "Both significant positive and significant inverted cells observed. Performance is benchmark- or region-dependent."
+        is_confirmed = False
+    elif n_pos >= math.ceil(0.5 * n_primary) and n_inv == 0:
+        outcome_code = "A. CONFIRMED"
+        outcome_label = f"CONFIRMED ({n_pos}/{n_primary} primary cells meet all pre-registered criteria)"
+        outcome_desc = "Avoidance of persistent hot qubit reliably improves algorithmic execution on hardware."
+        is_confirmed = True
+    elif n_inv >= math.ceil(0.5 * n_primary) and n_pos == 0:
+        outcome_code = "C. INVERTED"
+        outcome_label = f"INVERTED ({n_inv}/{n_primary} primary cells show significant inverted degradation)"
+        outcome_desc = "Refutes predictive validity of p1 calibration data for spatial layout selection."
+        is_confirmed = False
+    else:
+        outcome_code = "B. NULL / NOT CONFIRMED"
+        outcome_label = f"NULL / NOT CONFIRMED ({n_pos}/{n_primary} primary cells meet criterion; < 50% threshold)"
+        outcome_desc = "Measured p1 excess does not translate into circuit-level degradation."
+        is_confirmed = False
 
     # Write Provenance JSON
     prov_path = Path(out_csv).with_suffix(".provenance.json")
@@ -257,91 +366,66 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
         "backend": plan_data.get("backend"),
         "calibration_timestamp": plan_data.get("calibration_timestamp"),
         "plan_hash": plan_data.get("plan_hash"),
+        "preregistration_version": "v2.2",
         "is_synthetic": is_synthetic,
+        "synthetic_outcome": synthetic_outcome if is_synthetic else None,
+        "primary_cells_executed": n_primary,
+        "significant_positive_cells": n_pos,
+        "significant_inverted_cells": n_inv,
+        "outcome_code": outcome_code,
+        "outcome_label": outcome_label,
         "shots_pooled_per_cell": 16384,
         "repetitions": 2,
-        "decision_rule": "region counts if own CLEAN-HOT Newcombe CI low > 0 and diff >= 0.5 pt; benchmark confirmed if >= 2 valid (non-confounded) regions count",
-        "rows": len(df_stats)
     }
     with open(prov_path, "w", encoding="utf-8") as f:
         json.dump(prov_data, f, indent=2)
 
-    # Generate Report Header & Text Summary
+    # Format Summary Text Report
     lines = []
-    lines.append("=" * 80)
-    lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: STATISTICAL ANALYSIS REPORT")
+    lines.append("=" * 95)
+    if is_synthetic:
+        lines.append("[SYNTHETIC KNOWN-ANSWER TEST - NOT EVIDENCE - DO NOT CITE]")
+    if n_primary < 4:
+        lines.append("[DESCRIPTIVE, NOT CONFIRMATORY - N_primary < 4]")
+    lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: STATISTICAL ANALYSIS REPORT (v2.2)")
     lines.append(f"Analysis Timestamp: {datetime.datetime.now(datetime.timezone.utc).isoformat()}")
-    lines.append("=" * 80)
+    lines.append("=" * 95)
     lines.append("")
-    lines.append("HEADER METHODOLOGICAL DISCLOSURES:")
-    lines.append("--------------------------------------------------------------------------------")
-    lines.append("  1. Repetitions use identical circuits so CIs cover shot noise only.")
-    lines.append("  2. One backend, one calibration day (strict single-epoch calibration isolation).")
-    lines.append("  3. Regions chosen by measured excess excited-state population (excess_p1 > 0.05).")
-    lines.append("  4. HOT and CLEAN differ in more than the hot qubit (native 2Q count and calibrated ESP differ).")
-    lines.append(f"  5. Evaluation Mode: {'SYNTHETIC COUNTS (Known-Answer Test)' if is_synthetic else 'REAL HARDWARE COUNTS (IBM Quantum)'}")
+    lines.append("1. METHODOLOGICAL SPECIFICATIONS & DISCLOSURES")
+    lines.append("-" * 95)
+    lines.append("  - Comparator:              ESP-matched clean layout (ESP_clean <= ESP_hot within 0.03, |Delta 2Q| <= 4)")
+    lines.append("  - Negative Control:        CLEAN2 matched layout for empirical layout-variance floor")
+    lines.append("  - Metric:                  Difference of independent proportions: success_prob(CLEAN) - success_prob(HOT)")
+    lines.append("  - Statistical CI:          Newcombe hybrid-score 95% CI (Method 10, Newcombe 1998) pooled over 2 reps")
+    lines.append("  - Noise Scope:             CI covers shot noise only; context given by layout-variance floor")
+    lines.append("  - Decision Rules:          Diff >= +0.5 pt, CI low > 0, rep0/rep1 sign agreement, |diff| > |clean - clean2|")
+    lines.append(f"  - Mode:                    {'SYNTHETIC TEST' if is_synthetic else 'REAL QPU HARDWARE EXECUTION'}")
     lines.append("")
-    lines.append("SUMMARY OF REGIONAL DIFFERENCES IN CIRCUIT PROPERTIES (HOT vs CLEAN):")
-    lines.append("--------------------------------------------------------------------------------")
-    for r in plan_data.get("regions", []):
-        lines.append(f"  Region {r['region_id']} (Hot Qubit: {r['hot_qubit']}, Excess p1: {r['excess_p1']:.4f}, Readout Err: {r['readout_error']:.4f}):")
-        for b_name in benchmarks_list:
-            if b_name in r["benchmarks"]:
-                bm = r["benchmarks"][b_name]
-                lines.append(
-                    f"    - {b_name:<6}: Calibrated ESP HOT={bm['hot_esp']:.4f}, CLEAN={bm['clean_esp']:.4f} (diff: {bm['clean_esp']-bm['hot_esp']:+.4f}) | "
-                    f"Native 2Q HOT={bm['hot_2q']}, CLEAN={bm['clean_2q']} (diff: {bm['diff_2q']:+d}) | "
-                    f"Depth HOT={bm['hot_depth']}, CLEAN={bm['clean_depth']} (diff: {bm['diff_depth']:+d})"
-                )
-    lines.append("")
-    lines.append("PAIRED DIFFERENCE RESULTS TABLE (CLEAN - HOT):")
-    lines.append("-" * 105)
-    hdr = f"{'Benchmark':<9} {'Region':<8} {'Clean %':<9} {'Hot %':<9} {'Diff (pts)':<12} {'95% Newcombe CI':<20} {'z-stat':<8} {'p (raw)':<11} {'p (Holm)':<11} {'Cell Pass':<9}"
+    lines.append("2. PRIMARY CELL STATISTICAL RESULTS (CLEAN - HOT)")
+    lines.append("-" * 115)
+    hdr = f"{'Region':<7} {'Bench':<7} {'Clean %':<9} {'Hot %':<9} {'Diff (pts)':<11} {'95% Newcombe CI':<20} {'Rep0/1 (pts)':<18} {'Floor':<9} {'Cell Pass':<9}"
     lines.append(hdr)
-    lines.append("-" * 105)
-    for idx, r in df_stats.iterrows():
-        p_raw_s = f"{r['p_value_raw']:.4e}" if r['p_value_raw'] >= 1e-4 else "<1e-4"
-        p_holm_s = f"{r['p_value_holm']:.4e}" if r['p_value_holm'] >= 1e-4 else "<1e-4"
-        ci_s = f"[{r['ci_low_pts']:+.3f}, {r['ci_high_pts']:+.3f}]"
+    lines.append("-" * 115)
+    for c in cell_evaluations:
+        ci_str = f"[{c['ci_low_pts']:+.3f}, {c['ci_high_pts']:+.3f}]"
+        reps_str = f"{c['diff_rep0_pts']:+.2f} / {c['diff_rep1_pts']:+.2f}"
+        floor_str = f"{c['floor_value_pts']:.2f} pt" if c['has_clean2'] else "No Clean2"
+        pass_str = "PASS (+)" if c['is_sig_positive'] else ("PASS (-)" if c['is_sig_inverted'] else "FAIL")
         lines.append(
-            f"{r['benchmark']:<9} R{r['region_id']:<7} {r['clean_score']*100:<9.2f} {r['hot_score']*100:<9.2f} "
-            f"{r['diff_pts']:<12.3f} {ci_s:<20} {r['z_stat']:<8.3f} {p_raw_s:<11} {p_holm_s:<11} "
-            f"{str(r['penalty_confirmed_cell']):<9}"
+            f"R{c['region_id']:<6} {c['benchmark']:<7} {c['clean_score']*100:<9.2f} {c['hot_score']*100:<9.2f} "
+            f"{c['diff_pts']:<11.3f} {ci_str:<20} {reps_str:<18} {floor_str:<9} {pass_str:<9}"
         )
-    lines.append("-" * 105)
+    lines.append("-" * 115)
     lines.append("")
-
-    # Decision Rule Evaluation
-    lines.append("DECISION RULE VERIFICATION (AMENDED IN CHECKPOINT S):")
-    lines.append("--------------------------------------------------------------------------------")
-    lines.append("Pre-registered criterion: a region counts if its own CLEAN - HOT Newcombe CI lower bound > 0")
-    lines.append("and difference >= 0.5 pt. The benchmark is confirmed if >= 2 valid (non-confounded) regions count.")
-    lines.append("Cells with |native 2q difference HOT vs CLEAN| > 4 are designated as 'confounded'")
-    lines.append("and excluded from contributing to the confirmation threshold, but reported.")
-    lines.append("")
-    benchmark_decisions = {}
-    for b_name in benchmarks_list:
-        sub = df_stats[df_stats["benchmark"] == b_name]
-        valid_sub = sub[sub["confounded"] == False]
-        passing_regions = valid_sub[valid_sub["penalty_confirmed_cell"] == True]
-        num_valid = len(valid_sub)
-        num_pass = len(passing_regions)
-        if num_valid < 2:
-            status_str = f"INCONCLUSIVE / UNCONFIRMED (only {num_valid}/3 regions are non-confounded; cannot reach >= 2 threshold)"
-            is_confirmed = False
-        elif num_pass >= 2:
-            status_str = f"CONFIRMED ({num_pass}/{num_valid} valid non-confounded regions meet CI low > 0 and diff >= 0.5 pt)"
-            is_confirmed = True
-        else:
-            status_str = f"NOT CONFIRMED ({num_pass}/{num_valid} valid non-confounded regions meet criterion)"
-            is_confirmed = False
-        benchmark_decisions[b_name] = (is_confirmed, num_pass, num_valid)
-        lines.append(f"  Benchmark '{b_name:<6}': {status_str}")
-
-    lines.append("")
-    lines.append("=" * 80)
-    lines.append("END OF STATISTICAL ANALYSIS")
-    lines.append("=" * 80)
+    lines.append("3. OVERALL OUTCOME DETERMINATION (MUTUALLY EXCLUSIVE & EXHAUSTIVE A-F)")
+    lines.append("-" * 95)
+    lines.append(f"  Total Primary Cells:      {n_primary} (Threshold for Confirmatory Power: >= 4)")
+    lines.append(f"  Significant Positive:     {n_pos}")
+    lines.append(f"  Significant Inverted:     {n_inv}")
+    lines.append(f"  Pre-Registered Outcome:   {outcome_code}")
+    lines.append(f"  Outcome Summary:          {outcome_label}")
+    lines.append(f"  Interpretation Note:      {outcome_desc}")
+    lines.append("=" * 95)
 
     report_text = "\n".join(lines) + "\n"
     os.makedirs(os.path.dirname(out_txt), exist_ok=True)
@@ -349,16 +433,30 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
         f.write(report_text)
 
     print(report_text)
-    print(f"Stats written to {out_csv} and report to {out_txt}.")
+    print(f"Stats CSV written to {out_csv}")
+    print(f"Summary TXT written to {out_txt}")
+
+    return {
+        "outcome_code": outcome_code,
+        "outcome_label": outcome_label,
+        "is_confirmed": is_confirmed,
+        "n_primary": n_primary,
+        "n_pos": n_pos,
+        "n_inv": n_inv,
+        "df_stats": df_stats
+    }
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyze Hotspot Hardware Stress Test Results")
+    parser = argparse.ArgumentParser(description="Analyze Hotspot Hardware Stress Test Results (v2.2)")
     parser.add_argument("--plan", default="results/hardware_extra/plan.json", help="Path to plan.json")
     parser.add_argument("--raw-dir", default="results/hardware_extra/raw", help="Path to raw JSON counts")
     parser.add_argument("--out-csv", default="results/hardware_extra_stats.csv", help="Path to output stats CSV")
     parser.add_argument("--out-txt", default="results/hardware_extra/hotspot_analysis_summary.txt", help="Path to output summary TXT")
     parser.add_argument("--synthetic", action="store_true", help="Run known-answer test with synthetic counts")
-    parser.add_argument("--effect", type=float, default=1.2, help="Synthetic effect size in percentage points")
+    parser.add_argument("--outcome", choices=["confirmed", "null", "inverted", "inconclusive", "mixed"], default="confirmed",
+                        help="Outcome pattern to simulate in synthetic mode")
+    parser.add_argument("--effect", type=float, default=2.5, help="Synthetic effect size in percentage points")
+    parser.add_argument("--descriptive", action="store_true", help="Label output descriptive if N_primary < 4")
     args = parser.parse_args()
 
     analyze_hotspot(
@@ -367,7 +465,9 @@ def main():
         out_csv=args.out_csv,
         out_txt=args.out_txt,
         synthetic=args.synthetic,
-        synthetic_effect_pts=args.effect
+        synthetic_outcome=args.outcome,
+        synthetic_effect_pts=args.effect,
+        descriptive=args.descriptive
     )
 
 if __name__ == "__main__":

@@ -317,7 +317,31 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
                 is_confounded = False
                 conf_reason = "Matched (|Delta 2Q| <= 4, ESP <= HOT and within 0.03)"
                 is_executed = True
+
+                # Checkpoint W (W4(e)): CLEAN2 negative control layout matched to CLEAN_matched
+                clean2_cands = [c for c in matched[1:] if c["layout"] != chosen["layout"]]
+                if clean2_cands:
+                    chosen_clean2 = clean2_cands[0]
+                    has_clean2 = True
+                    clean2_lay = chosen_clean2["layout"]
+                    clean2_tc = chosen_clean2["transpiled"]
+                    clean2_esp = chosen_clean2["esp"]
+                    clean2_2q = chosen_clean2["clean_2q"]
+                    clean2_depth = chosen_clean2["depth"]
+                else:
+                    has_clean2 = False
+                    clean2_lay = None
+                    clean2_tc = None
+                    clean2_esp = -1.0
+                    clean2_2q = 0
+                    clean2_depth = 0
             else:
+                has_clean2 = False
+                clean2_lay = None
+                clean2_tc = None
+                clean2_esp = -1.0
+                clean2_2q = 0
+                clean2_depth = 0
                 is_executed = False
                 non_conf_candidates = [c for c in clean_candidates if abs(c["diff_2q"]) <= 4]
                 if non_conf_candidates:
@@ -356,6 +380,12 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
                 "is_primary": (status == "PRIMARY"),
                 "hot_layout": best_hot_lay,
                 "clean_layout": best_clean_lay,
+                "has_clean2": has_clean2,
+                "clean2_layout": clean2_lay,
+                "clean2_esp": clean2_esp,
+                "clean2_2q": clean2_2q,
+                "clean2_depth": clean2_depth,
+                "clean2_transpiled": clean2_tc,
                 "thermal_esp_layout": best_th_lay,
                 "thermal_equals_clean": th_equals_clean,
                 "hot_esp": best_hot_esp,
@@ -430,11 +460,18 @@ def run_hotspot(args):
     cal_timestamp = get_calibration_timestamp(backend)
     target = backend.target
 
+    # Target live with local is strictly prohibited
+    if target_mode == "live" and getattr(args, "local", False):
+        raise ValueError("Refusal: Cannot use --local with --target live. Live target requires connection to IBM Quantum.")
+
     # Step 1.6: Allowance checked timestamp verification
     checked_at_str = config.get("allowance_checked_at")
+    allowance_source_str = config.get("allowance_remaining_s_source", "manual dashboard (TODO: verify before live run)")
     now_utc = datetime.datetime.now(datetime.timezone.utc)
+    is_live_run = (target_mode == "live" and not getattr(args, "local", False))
+
     if not checked_at_str:
-        if target_mode == "live" or args.execute:
+        if is_live_run:
             raise ValueError("Refusal: 'allowance_checked_at' missing in config.yaml. Dashboard allowance must be verified within 24 hours.")
         else:
             print("  [WARNING] 'allowance_checked_at' missing in config.yaml.")
@@ -443,7 +480,7 @@ def run_hotspot(args):
         checked_at_dt = parse_iso_ts(checked_at_str)
         allowance_age_sec = abs((now_utc - checked_at_dt).total_seconds())
         is_allowance_stale = (allowance_age_sec > 86400)
-        if target_mode == "live" or args.execute:
+        if is_live_run:
             if is_allowance_stale:
                 raise ValueError(
                     f"Refusal: 'allowance_checked_at' ({checked_at_str}) is older than 24 hours "
@@ -455,9 +492,6 @@ def run_hotspot(args):
 
     # Step 2: p1 data loading and validation
     if target_mode == "live":
-        if args.local:
-            raise ValueError("Refusal: Cannot use --local with --target live. Live target requires connection to IBM Quantum.")
-
         import glob
         p1v2_files = sorted(glob.glob("results/hardware_v2/p1v2_*.json"))
         if not p1v2_files:
@@ -638,6 +672,18 @@ def run_hotspot(args):
                 "layout": b_data["clean_layout"],
                 "transpiled_circuit": isa_clean,
             })
+            # CLEAN2 circuit (negative control) if available
+            if b_data.get("has_clean2") and b_data.get("clean2_transpiled") is not None:
+                isa_clean2 = pm.run(b_data["clean2_transpiled"])
+                validate_isa(isa_clean2, target)
+                circuit_items.append({
+                    "region_id": r_id,
+                    "hot_qubit": h_q,
+                    "benchmark": b_name,
+                    "condition": "CLEAN2",
+                    "layout": b_data["clean2_layout"],
+                    "transpiled_circuit": isa_clean2,
+                })
 
     # De-duplication mapping
     unique_circuits = []
@@ -694,15 +740,25 @@ def run_hotspot(args):
     remaining_after_run = rem_scen2
 
     # Power gate count
+    # Power gate count
     num_primary_cells = sum(
         1 for reg in regions
         for b_name, b_data in reg["benchmarks"].items()
         if b_data.get("status") == "PRIMARY"
     )
-    if num_primary_cells < 4:
+    is_underpowered = (num_primary_cells < 4)
+    if is_underpowered:
         power_status = f"INCONCLUSIVE (underpowered: {num_primary_cells} primary cells < 4 required)"
+        if getattr(args, "descriptive", False):
+            power_status += " [DESCRIPTIVE, NOT CONFIRMATORY MODE]"
     else:
         power_status = f"ADEQUATE ({num_primary_cells} primary cells >= 4 required)"
+
+    if is_underpowered and args.execute and not getattr(args, "descriptive", False):
+        raise ValueError(
+            f"Refusal: Plan has only {num_primary_cells} primary cells (< 4 required for confirmatory test). "
+            "To execute in descriptive/exploratory mode, pass --descriptive."
+        )
 
     current_hashes = [hash_circuit(c) for c in unique_circuits]
 
@@ -741,10 +797,12 @@ def run_hotspot(args):
         "excess_metric_label": "excess P(1|0) over isolated control qubits median or calibrated prob_meas1_prep0",
         "confounding_rule": "Cells with |native 2q difference HOT vs CLEAN| > 4 or unmatchable ESP are dropped from execution.",
         "decision_rule": "hot-spot penalty confirmed for a benchmark only if among primary cells (matched & non-confounded), pooled CLEAN - HOT Newcombe 95% CI lower bound > 0 and diff >= 0.5 pt in >= 50% of cells with N_primary >= 4.",
-        "comparator_rule": "CLEAN_matched = argmax ESP_std among clean connected 5q subgraphs in B_4(h) with ESP_std <= ESP_std(HOT), within 0.03, and |Delta 2Q| <= 4; else UNMATCHABLE (not executed).",
+        "comparator_rule": "CLEAN_matched = argmax ESP_std among clean connected 5q subgraphs in B_4(h) with ESP_std <= ESP_std(HOT), within 0.03, and |Delta 2Q| <= 4; else UNMATCHABLE (not executed). Negative control CLEAN2 matched similarly.",
         "confounding_threshold_2q": 4,
         "power_status": power_status,
         "primary_cell_count": num_primary_cells,
+        "is_underpowered": is_underpowered,
+        "descriptive_mode": getattr(args, "descriptive", False),
         "backend": backend_name,
         "calibration_timestamp": cal_timestamp,
         "p1_source_file": str(newest_p1_file).replace("\\", "/"),
@@ -757,6 +815,8 @@ def run_hotspot(args):
         "total_estimate_seconds": total_estimate_seconds,
         "p1v2_estimate_seconds": p1v2_estimate_seconds,
         "allowance_remaining_s": allowance_remaining,
+        "allowance_source": allowance_source_str,
+        "allowance_checked_at": checked_at_str,
         "reserve_s": reserve_s,
         "extra_run_cap_s": extra_run_cap_s,
         "remaining_after_run_s": remaining_after_run,
@@ -781,7 +841,11 @@ def run_hotspot(args):
     lines.append("=" * 80)
     if target_mode != "live":
         lines.append("[OFFLINE DRY RUN ON FakeMarrakesh - NOT EVIDENCE - DO NOT CITE]")
-    lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN")
+    if is_underpowered:
+        lines.append("[DESCRIPTIVE, NOT CONFIRMATORY - N_primary < 4]")
+    if is_allowance_stale:
+        lines.append(f"[WARNING] Stored allowance was checked at {checked_at_str} ({allowance_age_sec/3600:.1f} h ago > 24h).")
+    lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN (v2.2)")
     lines.append(f"Timestamp: {datetime.datetime.now(datetime.timezone.utc).isoformat()}")
     lines.append("=" * 80)
     lines.append("")
@@ -790,6 +854,8 @@ def run_hotspot(args):
     lines.append(f"  Backend:                  {backend_name}")
     lines.append(f"  Calibration Timestamp:    {cal_timestamp}")
     lines.append(f"  Newest p1 Source:         {newest_p1_file.as_posix()}")
+    lines.append(f"  Allowance Source:         {allowance_source_str}")
+    lines.append(f"  Allowance Checked At:     {checked_at_str}")
     lines.append(f"  Excess Metric Label:      excess P(1|0) over control median or calibrated prob_meas1_prep0")
     lines.append("")
     lines.append("2. REGION AND LAYOUT SELECTION LOGS")
@@ -823,7 +889,7 @@ def run_hotspot(args):
                 )
         lines.append("-" * 115)
     lines.append("")
-    lines.append("4. CIRCUIT COUNT & BUDGET SCENARIOS (Checkpoint V)")
+    lines.append("4. CIRCUIT COUNT & BUDGET SCENARIOS (Checkpoint W / v2.2)")
     lines.append("-" * 80)
     lines.append(f"  Circuit Count Before De-dup:   {count_before}")
     lines.append(f"  Circuit Count After De-dup:    {count_after}")
@@ -832,7 +898,10 @@ def run_hotspot(args):
     lines.append(f"  Total Estimated Plan Seconds:  {total_estimate_seconds:.3f} s ({repetitions} reps)")
     lines.append(f"  Extra Run Budget Cap:          {extra_run_cap_s:.1f} s")
     lines.append(f"  Cap Verification:              {'PASS' if total_estimate_seconds <= extra_run_cap_s else 'FAIL'} ({total_estimate_seconds:.1f} s <= {extra_run_cap_s:.1f} s)")
-    lines.append(f"  Dashboard Allowance Remaining: {allowance_remaining:.1f} s")
+    lines.append(f"  Dashboard Allowance Remaining: {allowance_remaining:.1f} s (Source: {allowance_source_str})")
+    lines.append(f"  Allowance Checked At:          {checked_at_str}")
+    if is_allowance_stale:
+        lines.append(f"  [WARNING] Allowance verification is older than 24h ({allowance_age_sec/3600:.1f} h ago). Update before live execution.")
     lines.append(f"  Reserve Buffer Requirement:    {reserve_s:.1f} s")
     lines.append(f"  measure_p1_v2 Dry-Run Estimate:{p1v2_estimate_seconds:.1f} s ({p1v2_num_pubs} PUBs @ {est_per_circuit:.2f} s/PUB)")
     lines.append("")
@@ -908,7 +977,7 @@ def run_hotspot(args):
         print(f"  # If zero persistent hot qubits, STOP and report non-persistence as the finding.")
         print(f"  python scripts/run_hotspot_hw.py --target live --dry-run")
         print(f"  python scripts/run_hotspot_hw.py --target live --execute --approve-seconds <M>")
-        print(f"  python scripts/analyze_hotspot_v2.py")
+        print(f"  python scripts/analyze_hotspot.py")
         return
 
     # -------------------------------------------------------------------------
@@ -1005,6 +1074,7 @@ def main():
     parser.add_argument("--approve-seconds", type=int, default=None, help="Approved budget seconds for execution")
     parser.add_argument("--local", action="store_true", help="Run locally using FakeMarrakesh without submitting to live QPU")
     parser.add_argument("--strict-d2", action="store_true", help="Strictly enforce distance <= 2 (dropping regions with no clean 5q subgraphs)")
+    parser.add_argument("--descriptive", action="store_true", help="Allow execution when primary cell count < 4; labels all output DESCRIPTIVE, NOT CONFIRMATORY")
     args = parser.parse_args()
 
     run_hotspot(args)

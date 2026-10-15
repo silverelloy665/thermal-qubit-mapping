@@ -272,14 +272,15 @@ def run_measure_p1_v2(args):
     shots = 4096
 
     # 1. Backend resolution & pinning
+    target_mode = getattr(args, "target", "fake")
     target_backend_name = config.get("extra_backend", "ibm_marrakesh")
-    if args.local:
-        if args.backend_override == "fake_marrakesh":
-            from qiskit_ibm_runtime.fake_provider import FakeMarrakesh
-            backend = FakeMarrakesh()
-        else:
+    if args.local or target_mode != "live":
+        if args.backend_override == "fake_vigo":
             from qiskit_ibm_runtime.fake_provider import FakeVigoV2
             backend = FakeVigoV2()
+        else:
+            from qiskit_ibm_runtime.fake_provider import FakeMarrakesh
+            backend = FakeMarrakesh()
         cal_timestamp = get_calibration_timestamp(backend)
     else:
         service = get_ibm_service()
@@ -366,14 +367,78 @@ def run_measure_p1_v2(args):
 
     print("Budget Gate: PASS (Estimate within cap and preserves reserve allowance).")
 
+    # -------------------------------------------------------------------------
+    # Pilot Mode Handling
+    # -------------------------------------------------------------------------
+    pilot_est_seconds = sec_per_pub
+    if getattr(args, "pilot", False):
+        print("\n" + "=" * 80)
+        print("PILOT CALIBRATION MODE (measure_p1_v2)")
+        print("=" * 80)
+        print(f"Preparing 1 measurement PUB to calibrate timing scale on {backend.name}...")
+        print(f"Estimated pilot duration: {pilot_est_seconds:.2f} s")
+        required_pilot_approve = math.ceil(pilot_est_seconds)
+
+        if not args.execute and not args.local:
+            print("\n[PILOT DRY RUN COMPLETE] No jobs submitted to hardware.")
+            print(f"To execute pilot on QPU, run with: --pilot --execute --approve-seconds {required_pilot_approve}")
+            return
+
+        if args.approve_seconds is None or int(args.approve_seconds) != required_pilot_approve:
+            raise ValueError(f"Refusal: Must provide --approve-seconds {required_pilot_approve} for pilot execution.")
+
+        pilot_circuit = isa_circuits[0]
+        if args.local or target_mode != "live":
+            j_id = f"pilot_local_{int(time.time())}"
+            usage = pilot_est_seconds
+        else:
+            sampler = Sampler(mode=backend)
+            sampler.options.dynamical_decoupling.enable = False
+            sampler.options.twirling.enable_gates = False
+            job = sampler.run([pilot_circuit], shots=shots)
+            j_id = job.job_id()
+            res = job.result()
+            usage = extract_qpu_seconds(job, pilot_est_seconds)
+
+        pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
+        pilot_scale_path.parent.mkdir(parents=True, exist_ok=True)
+        pilot_data = {
+            "timestamp": time.time(),
+            "backend": backend.name,
+            "calibration_timestamp": cal_timestamp,
+            "job_id": j_id,
+            "seconds_per_shot": usage / shots,
+            "pilot_usage": usage,
+            "pilot_shots": shots,
+            "source": "measure_p1_v2 --pilot"
+        }
+        with open(pilot_scale_path, "w", encoding="utf-8") as f:
+            json.dump(pilot_data, f, indent=2)
+        print(f"\n[SUCCESS] Pilot scale saved to {pilot_scale_path} (Job ID: {j_id}, Usage: {usage:.2f} s).")
+        return
+
     if not args.execute and not args.local:
         print("\n[DRY RUN ONLY] No jobs submitted to hardware.")
         print(f"To execute on live QPU, run with: --execute --approve-seconds {math.ceil(total_est_seconds)}")
         return
 
-    # Execution Mode
-    if not args.local:
-        check_pilot_and_approval(total_est_seconds, args.approve_seconds)
+    # Execution Mode (Full measurement run)
+    if getattr(args, "execute", False):
+        pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
+        if not pilot_scale_path.exists():
+            raise ValueError(f"Refusal: Pilot file '{pilot_scale_path}' missing. Run --pilot first.")
+        with open(pilot_scale_path, "r", encoding="utf-8") as f:
+            pilot_data = json.load(f)
+        if time.time() - pilot_data.get("timestamp", 0) > 86400:
+            raise ValueError("Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
+        if pilot_data.get("backend") != backend.name:
+            raise ValueError(f"Refusal: Pilot backend '{pilot_data.get('backend')}' does not match target backend '{backend.name}'.")
+        if pilot_data.get("calibration_timestamp") != cal_timestamp:
+            raise ValueError("Refusal: Pilot calibration timestamp does not match target calibration timestamp. Run --pilot on fresh calibration.")
+
+        required_approve = math.ceil(total_est_seconds)
+        if args.approve_seconds is None or int(args.approve_seconds) != required_approve:
+            raise ValueError(f"Refusal: Must provide --approve-seconds {required_approve} matching total estimate.")
 
     print(f"\nSubmitting {len(isa_circuits)} measurement PUBs to {backend.name}...")
     
@@ -508,10 +573,14 @@ def run_measure_p1_v2(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Measure QPU P1 (v2) Protocol")
-    parser.add_argument("--local", action="store_true", help="Run with local fake backend")
-    parser.add_argument("--backend-override", type=str, default="fake_vigo", help="fake_vigo or fake_marrakesh for local runs")
-    parser.add_argument("--execute", action="store_true", help="Execute on live hardware")
+    parser.add_argument("--target", choices=["fake", "live"], default="fake", help="Target mode: fake (offline rehearsal on FakeMarrakesh) or live (real QPU target)")
+    parser.add_argument("--dry-run", action="store_true", help="Dry run estimation without hardware execution")
+    parser.add_argument("--pilot", action="store_true", help="Run 1 PUB to calibrate timing scale")
+    parser.add_argument("--execute", action="store_true", help="Execute on hardware")
     parser.add_argument("--approve-seconds", type=int, default=None, help="Approve QPU execution budget")
+    parser.add_argument("--local", action="store_true", help="Run with local fake backend")
+    parser.add_argument("--out-dir", type=str, default="results/hardware_v2", help="Output directory")
+    parser.add_argument("--backend-override", type=str, default="fake_marrakesh", help="fake_vigo or fake_marrakesh for local runs")
     args = parser.parse_args()
 
     run_measure_p1_v2(args)

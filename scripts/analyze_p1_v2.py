@@ -305,10 +305,13 @@ def analyze_p1_v2(p1v2_file=None, base_p1_file="results/hardware/p1_ibm_marrakes
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze p1v2 JSON Characterization")
-    parser.add_argument("--file", type=str, default=None, help="Path to p1v2 JSON file")
+    parser.add_argument("file", nargs="?", default=None, help="Path to p1v2 JSON file (positional)")
+    parser.add_argument("--file", dest="file_opt", type=str, default=None, help="Path to p1v2 JSON file")
+    parser.add_argument("--out-txt", type=str, default="results/analysis_v2/p1v2_summary.txt", help="Path to output summary TXT")
     args = parser.parse_args()
 
-    analyze_p1_v2(args.file)
+    chosen_file = args.file_opt or args.file
+    analyze_p1_v2(chosen_file, out_file=args.out_txt)
 
 if __name__ == "__main__":
     main()

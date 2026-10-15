@@ -500,7 +500,7 @@ def test_hotspot_plan_hash_stability():
         plan = json.load(f)
 
     computed_h = compute_plan_hash(plan)
-    expected_h = "c9d9ce817ad27842" + "5a64895d3ffa4dec" + "9987c7d0a3b99213" + "cb5561ed2faf056a"
+    expected_h = "8b06973d4e984aa3" + "17302599bd026356" + "f6683cc5f518e2fb" + "331e0b56c09f726c"
     assert computed_h == expected_h
 
 def test_hotspot_synthetic_analysis_known_answer(tmp_path):
@@ -712,7 +712,7 @@ def test_hotspot_human_order_pilot_gate():
         # Step 4: Execute with approved seconds (passes pilot gate)
         req_sec = int(plan_data["total_estimate_seconds"])
         args_exec = argparse.Namespace(
-            local=True, execute=True, approve_seconds=req_sec, dry_run=False, pilot=False, strict_d2=False
+            local=True, execute=True, approve_seconds=req_sec, dry_run=False, pilot=False, strict_d2=False, descriptive=True
         )
         run_hotspot(args_exec)
 
@@ -1365,8 +1365,9 @@ def test_unmatchable_handling_drops_from_execution():
                 assert b_val.get("executed", True)
 
     assert unmatchable_count > 0, "Expected at least one unmatchable cell on heavy-hex"
-    # Verify circuit_count_before equals 2 * primary_count (each primary has 1 HOT + 1 CLEAN circuit)
-    assert plan.get("circuit_count_before") == 2 * primary_count
+    # Verify circuit_count_before equals 2 * primary_count + clean2_count (HOT + CLEAN + optional CLEAN2)
+    clean2_count = sum(1 for reg in plan.get("regions", []) for b in reg.get("benchmarks", {}).values() if b.get("status") == "PRIMARY" and b.get("has_clean2"))
+    assert plan.get("circuit_count_before") == 2 * primary_count + clean2_count
 
 
 def test_minimum_primary_cells_inconclusive_flag():
@@ -1441,11 +1442,170 @@ def test_offline_synthetic_banner_and_fake_file_refusal():
     assert res.get("is_fake", False)
 
     # Calling run_hotspot with live target and rehearsal file must be refused
-    args_live = argparse.Namespace(
-        target="live", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False
+    import yaml
+    from datetime import datetime, timezone
+    raw_cfg = Path("config.yaml").read_text(encoding="utf-8")
+    fresh_cfg = dict(yaml.safe_load(raw_cfg), allowance_checked_at=datetime.now(timezone.utc).isoformat())
+    try:
+        Path("config.yaml").write_text(yaml.safe_dump(fresh_cfg), encoding="utf-8")
+        args_live = argparse.Namespace(
+            target="live", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False
+        )
+        with pytest.raises(ValueError, match="No p1v2 characterization file found|Cannot build live plan from a fake"):
+            run_hotspot(args_live)
+    finally:
+        Path("config.yaml").write_text(raw_cfg, encoding="utf-8")
+
+
+def test_analyze_hotspot_synthetic_all_outcomes(tmp_path):
+    """Verify analyze_hotspot outputs for all 5 pre-registered outcomes on synthetic counts."""
+    import tempfile
+    import json
+    from scripts.analyze_hotspot import analyze_hotspot
+
+    # 4 primary cells plan for testing confirmatory outcomes
+    mock_plan = {
+        "backend": "fake_marrakesh",
+        "calibration_timestamp": "2025-02-26T14:52:45-05:00",
+        "primary_cell_count": 4,
+        "regions": [
+            {
+                "region_id": 1, "hot_qubit": 125, "excess_p1": 0.41,
+                "benchmarks": {
+                    "ghz": {"status": "PRIMARY", "executed": True, "has_clean2": True, "clean_esp": 0.89, "hot_esp": 0.90, "clean_2q": 5, "hot_2q": 5, "diff_2q": 0},
+                    "bv":  {"status": "PRIMARY", "executed": True, "has_clean2": True, "clean_esp": 0.88, "hot_esp": 0.89, "clean_2q": 5, "hot_2q": 5, "diff_2q": 0}
+                }
+            },
+            {
+                "region_id": 2, "hot_qubit": 22, "excess_p1": 0.19,
+                "benchmarks": {
+                    "ghz": {"status": "PRIMARY", "executed": True, "has_clean2": True, "clean_esp": 0.89, "hot_esp": 0.90, "clean_2q": 5, "hot_2q": 5, "diff_2q": 0},
+                    "bv":  {"status": "PRIMARY", "executed": True, "has_clean2": True, "clean_esp": 0.88, "hot_esp": 0.89, "clean_2q": 5, "hot_2q": 5, "diff_2q": 0}
+                }
+            }
+        ]
+    }
+    plan_f = tmp_path / "plan_mock.json"
+    with open(plan_f, "w", encoding="utf-8") as f:
+        json.dump(mock_plan, f)
+
+    out_csv = tmp_path / "stats.csv"
+    out_txt = tmp_path / "summary.txt"
+
+    # 1. Confirmed
+    res_conf = analyze_hotspot(plan_path=str(plan_f), out_csv=str(out_csv), out_txt=str(out_txt), synthetic=True, synthetic_outcome="confirmed")
+    assert "CONFIRMED" in res_conf["outcome_code"]
+    assert res_conf["is_confirmed"]
+
+    # 2. Null
+    res_null = analyze_hotspot(plan_path=str(plan_f), out_csv=str(out_csv), out_txt=str(out_txt), synthetic=True, synthetic_outcome="null")
+    assert "NULL" in res_null["outcome_code"]
+    assert not res_null["is_confirmed"]
+
+    # 3. Inverted
+    res_inv = analyze_hotspot(plan_path=str(plan_f), out_csv=str(out_csv), out_txt=str(out_txt), synthetic=True, synthetic_outcome="inverted")
+    assert "INVERTED" in res_inv["outcome_code"]
+    assert not res_inv["is_confirmed"]
+
+    # 4. Mixed
+    res_mix = analyze_hotspot(plan_path=str(plan_f), out_csv=str(out_csv), out_txt=str(out_txt), synthetic=True, synthetic_outcome="mixed")
+    assert "MIXED" in res_mix["outcome_code"]
+    assert not res_mix["is_confirmed"]
+
+    # 5. Inconclusive
+    res_inc = analyze_hotspot(plan_path=str(plan_f), out_csv=str(out_csv), out_txt=str(out_txt), synthetic=True, synthetic_outcome="inconclusive")
+    assert "INCONCLUSIVE" in res_inc["outcome_code"]
+    assert not res_inc["is_confirmed"]
+
+
+def test_measure_p1_v2_pilot_generation_and_24h_refusal(tmp_path):
+    """Verify measure_p1_v2 pilot scale generation and 24h staleness refusal gate."""
+    import time
+    import json
+    import argparse
+    import pytest
+    from pathlib import Path
+    from scripts.measure_p1_v2 import run_measure_p1_v2
+
+    pilot_file = Path("results/hardware_extra/pilot_scale.json")
+
+    # 1. Pilot run with local fake backend
+    args_pilot = argparse.Namespace(
+        target="fake", pilot=True, execute=True, approve_seconds=2,
+        local=True, out_dir="results/hardware_v2", backend_override="fake_marrakesh", dry_run=False
     )
-    with pytest.raises(ValueError, match="No p1v2 characterization file found|Cannot build live plan from a fake"):
-        run_hotspot(args_live)
+    run_measure_p1_v2(args_pilot)
+    assert pilot_file.exists()
+    with open(pilot_file, "r", encoding="utf-8") as f:
+        pdata = json.load(f)
+    fresh_ts = pdata.get("timestamp", time.time())
+    assert pdata.get("pilot_shots") == 4096
+    assert abs(time.time() - fresh_ts) < 60
+
+    try:
+        # 2. Tamper timestamp to 30 hours ago -> must be refused
+        pdata["timestamp"] = time.time() - 30 * 3600
+        with open(pilot_file, "w", encoding="utf-8") as f:
+            json.dump(pdata, f, indent=2)
+
+        # Calling execute with stale pilot must raise ValueError
+        args_exec = argparse.Namespace(
+            target="fake", pilot=False, execute=True, approve_seconds=36,
+            local=True, out_dir="results/hardware_v2", backend_override="fake_marrakesh", dry_run=False
+        )
+        with pytest.raises(ValueError, match="older than 24 hours"):
+            run_measure_p1_v2(args_exec)
+    finally:
+        # Restore fresh pilot file
+        pdata["timestamp"] = time.time()
+        with open(pilot_file, "w", encoding="utf-8") as f:
+            json.dump(pdata, f, indent=2)
+
+
+def test_run_hotspot_descriptive_gate_and_clean2_selection():
+    """Verify run_hotspot --descriptive gate when N_primary < 4 and CLEAN2 selection."""
+    import argparse
+    import json
+    import time
+    import pytest
+    from pathlib import Path
+    from scripts.run_hotspot_hw import run_hotspot
+
+    plan_path = Path("results/hardware_extra/plan.json")
+    assert plan_path.exists()
+    with open(plan_path, "r", encoding="utf-8") as f:
+        plan = json.load(f)
+
+    # 1. Verify CLEAN2 selection in primary cells
+    has_clean2_count = 0
+    for reg in plan.get("regions", []):
+        for b_name, b_data in reg.get("benchmarks", {}).items():
+            if b_data.get("status") == "PRIMARY" and b_data.get("has_clean2"):
+                has_clean2_count += 1
+                assert b_data["clean2_layout"] != b_data["clean_layout"]
+                assert b_data["clean2_esp"] <= b_data["hot_esp"] + 1e-6
+                assert b_data["clean2_esp"] >= b_data["hot_esp"] - 0.03 - 1e-6
+
+    assert has_clean2_count >= 1, "Expected at least one primary cell to select a valid CLEAN2 negative control"
+
+    # Ensure pilot file is fresh for execute gate
+    pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
+    if pilot_scale_path.exists():
+        with open(pilot_scale_path, "r", encoding="utf-8") as f:
+            p_data = json.load(f)
+        p_data["timestamp"] = time.time()
+        with open(pilot_scale_path, "w", encoding="utf-8") as f:
+            json.dump(p_data, f, indent=2)
+
+    # 2. Verify refusal when N_primary < 4 and --execute is passed without --descriptive
+    if plan.get("primary_cell_count", 0) < 4:
+        args_no_desc = argparse.Namespace(
+            target="fake", dry_run=False, execute=True, pilot=False, approve_seconds=30,
+            local=True, strict_d2=False, descriptive=False
+        )
+        with pytest.raises(ValueError, match="descriptive"):
+            run_hotspot(args_no_desc)
+
 
 
 
