@@ -159,7 +159,7 @@ def get_region_subgraphs(g, region_nodes, k=5):
         dfs({i}, set(subg.neighbors(i)))
     return [list(sg) for sg in subgraphs]
 
-def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False):
+def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False, persistent_hot_qubits=None):
     target = backend.target
     cmap = backend.coupling_map
     g = rx.PyGraph()
@@ -186,13 +186,19 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
     max_regions = int(config.get("max_regions", 3))
     default_distance = int(config.get("region_distance", 4))
 
-    # Identify hot qubits: excess_p1 > hot_min_excess AND readout_error <= 0.20
+    # Identify hot qubits: if persistent_hot_qubits provided, use them; else filter by excess
     candidates = []
-    for q in range(backend.num_qubits):
-        exc_val = excess.get(q, 0.0)
-        ro_val = ro_err.get(q, 0.0)
-        if exc_val > hot_min_excess and ro_val <= 0.20:
+    if persistent_hot_qubits is not None:
+        for q in persistent_hot_qubits:
+            exc_val = excess.get(q, 0.0)
+            ro_val = ro_err.get(q, 0.0)
             candidates.append((q, exc_val, ro_val, p1_est.get(q, 0.0)))
+    else:
+        for q in range(backend.num_qubits):
+            exc_val = excess.get(q, 0.0)
+            ro_val = ro_err.get(q, 0.0)
+            if exc_val > hot_min_excess and ro_val <= 0.20:
+                candidates.append((q, exc_val, ro_val, p1_est.get(q, 0.0)))
 
     candidates.sort(key=lambda x: x[1], reverse=True)
     selected_hot = candidates[:max_regions]
@@ -358,10 +364,63 @@ def run_hotspot(args):
     cal_timestamp = get_calibration_timestamp(backend)
     target = backend.target
 
-    # Step 2: Read newest p1 file & live assertions
-    newest_p1_file, p1_data, p1_ts_str = get_newest_p1_data(backend_name)
-    p1_backend = p1_data.get("backend", "")
+    # Step 1.5: Allowance checked timestamp verification
+    checked_at_str = config.get("allowance_checked_at")
+    if not checked_at_str:
+        raise ValueError("Refusal: 'allowance_checked_at' missing in config.yaml. Dashboard allowance must be verified within 24 hours.")
+    checked_at_dt = parse_iso_ts(checked_at_str)
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    if abs((now_utc - checked_at_dt).total_seconds()) > 86400:
+        raise ValueError(f"Refusal: 'allowance_checked_at' ({checked_at_str}) is older than 24 hours. Re-enter dashboard allowance manually in config.yaml.")
+
+    # Step 2: Target mode resolution and p1 data loading
+    target_mode = getattr(args, "target", "fake")
     expected_backend = config.get("extra_backend", "ibm_marrakesh")
+    persistent_hot_qubits = None
+
+    if target_mode == "live":
+        if args.local:
+            raise ValueError("Refusal: Cannot use --local with --target live. Live target requires connection to IBM Quantum.")
+
+        import glob
+        p1v2_files = sorted(glob.glob("results/hardware_v2/p1v2_*.json"))
+        if not p1v2_files:
+            raise ValueError(f"Refusal: No p1v2 characterization file found in results/hardware_v2/ for backend '{backend_name}'. Run scripts/measure_p1_v2.py first.")
+        newest_p1_file = Path(p1v2_files[-1])
+        with open(newest_p1_file, "r", encoding="utf-8") as f:
+            p1_data = json.load(f)
+
+        p1_backend = p1_data.get("backend", "")
+        if p1_backend != backend_name and p1_backend != expected_backend:
+            raise ValueError(f"Refusal: p1v2 backend '{p1_backend}' does not match target backend '{backend_name}'.")
+
+        p1_exec_ts = parse_iso_ts(p1_data.get("execution_timestamp", ""))
+        if abs((now_utc - p1_exec_ts).total_seconds()) > 86400:
+            raise ValueError(f"Refusal: p1v2 file '{newest_p1_file}' is older than 24 hours. Re-run scripts/measure_p1_v2.py.")
+
+        p1_cal_ts = p1_data.get("calibration_timestamp")
+        if p1_cal_ts != cal_timestamp:
+            raise ValueError(
+                f"Refusal: p1v2 calibration timestamp '{p1_cal_ts}' "
+                f"does not match live target calibration timestamp '{cal_timestamp}'. Re-run scripts/measure_p1_v2.py on the fresh calibration."
+            )
+
+        from scripts.analyze_p1_v2 import analyze_p1_v2
+        analysis_res = analyze_p1_v2(str(newest_p1_file))
+        persistent_hot = analysis_res.get("persistent_hot", [])
+        if len(persistent_hot) < 1:
+            print("\n[REFUSAL RESULT] Zero persistent hot qubits identified under p1v2 characterization.")
+            print("Note: The non-persistence of hot spots across isolated blocks is itself an empirical finding.")
+            raise ValueError("Refusal: Cannot build hot-spot plan because zero persistent hot qubits were found in p1v2.")
+
+        persistent_hot_qubits = persistent_hot
+        p1_ts_str = p1_data.get("execution_timestamp", "")
+    else:
+        # Default fake target (FakeMarrakesh)
+        if args.execute and not args.local:
+            raise ValueError("Refusal: Execution on fake target is prohibited. Live hardware execution requires --target live.")
+        newest_p1_file, p1_data, p1_ts_str = get_newest_p1_data(backend_name)
+        p1_backend = p1_data.get("backend", "")
 
     # Item 3: Live backend assertions
     if not args.local:
@@ -452,7 +511,7 @@ def run_hotspot(args):
 
     # Layout Selection
     regions, log_messages, selected_hot = select_hotspot_regions_and_layouts(
-        backend, p1_data, config, strict_d2=args.strict_d2
+        backend, p1_data, config, strict_d2=args.strict_d2, persistent_hot_qubits=persistent_hot_qubits
     )
 
     # Build circuit list for execution / de-dup
@@ -588,6 +647,8 @@ def run_hotspot(args):
     # Generate printable summary report
     lines = []
     lines.append("=" * 80)
+    if target_mode != "live":
+        lines.append("[OFFLINE DRY RUN ON FakeMarrakesh - NOT EVIDENCE - DO NOT CITE]")
     lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN")
     lines.append(f"Timestamp: {datetime.datetime.now(datetime.timezone.utc).isoformat()}")
     lines.append("=" * 80)
@@ -798,6 +859,7 @@ def run_hotspot(args):
 def main():
     parser = argparse.ArgumentParser(description="Run Hotspot Hardware Stress Test")
     parser.add_argument("--dry-run", action="store_true", help="Print plan and write results/hardware_extra/plan.json (default)")
+    parser.add_argument("--target", choices=["fake", "live"], default="fake", help="Target mode: fake (offline rehearsal on FakeMarrakesh) or live (real QPU target with p1v2)")
     parser.add_argument("--pilot", action="store_true", help="Run 1 circuit to calibrate timing scale")
     parser.add_argument("--execute", action="store_true", help="Execute planned circuits with gating checks")
     parser.add_argument("--approve-seconds", type=int, default=None, help="Approved budget seconds for execution")

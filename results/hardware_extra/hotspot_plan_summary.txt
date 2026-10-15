@@ -1,6 +1,7 @@
 ================================================================================
+[OFFLINE DRY RUN ON FakeMarrakesh - NOT EVIDENCE - DO NOT CITE]
 PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN
-Timestamp: 2026-10-11T07:34:28.877709+00:00
+Timestamp: 2026-10-15T19:04:21.722966+00:00
 ================================================================================
 
 1. BACKEND & CALIBRATION METADATA

@@ -1,0 +1,42 @@
+================================================================================
+AUDIT REPORT: KNOWN LIMITATIONS OF THE P1 MEASUREMENT
+================================================================================
+Source Calibration File: results/hardware/p1_ibm_marrakesh_20261009T001839_0530.json
+Calibration Timestamp:   2026-10-09T00:18:39+05:30
+Total Qubits Audited:    156
+Per-PUB Shot Count:      4096
+
+1. ARCHITECTURAL & METHODOLOGICAL CONSTRAINTS
+--------------------------------------------------------------------------------
+- Single snapshot: All data obtained from a single characterization run on 2026-10-09.
+- Simultaneous readout crosstalk: All 156 qubits were measured simultaneously in a
+  single register, which creates potential measurement line and multiplexing crosstalk.
+- Symmetric error subtraction: Excess calculation subtracts symmetric calibrated readout
+  error ro although P(0|1) was recorded and differs markedly from P(1|0).
+- Zero clipping: 81/156 (51.9%) excess values clip to exactly 0.0
+  because measured P(1|0) is at or below the calibrated readout error.
+
+2. STATISTICAL SIGNIFICANCE & 2-SE MARGINS
+--------------------------------------------------------------------------------
+- Excess > 0.01: 43 qubits total; only 30 survive a 2-SE margin (excess - 2*SE > 0.01).
+- Excess > 0.02: 22 qubits total; only 20 survive a 2-SE margin (excess - 2*SE > 0.02).
+- Excess > 0.05: 7 qubits total; only 6 survive a 2-SE margin (excess - 2*SE > 0.05).
+
+3. QUBIT 125 ANOMALY: DEFECT / TRANSIENT VS TEMPERATURE
+--------------------------------------------------------------------------------
+- Qubit 125 P(1|0):             0.4214 (42.14%)
+- Qubit 125 P(0|1):             0.1333 (13.33%)
+- Qubit 125 Calibrated Readout: 0.0096 (0.96%)
+- Analysis: Qubit 125 has an extreme excited state population P(1|0) = 0.42 alongside
+  an elevated P(0|1) = 0.13, while calibrated readout error is under 1%. Such an extreme
+  population cannot be explained by 15 mK thermal equilibrium (which implies P10 < 1e-4);
+  it strongly indicates a two-level system (TLS) defect, active drive leakage, or a transient
+  hardware anomaly rather than a baseline dilution refrigerator thermal gradient.
+
+4. CALIBRATION AGE MISMATCH (STALENESS)
+--------------------------------------------------------------------------------
+- Initial p1 Calibration:       2026-10-09T00:18:39+05:30
+- Thermal-Arm Rerun Target:     2026-10-12T23:40:00+05:30
+- Age difference:               3 days stale (compiled circuits for 12 Oct hardware rerun
+  relied on 9 Oct excited state population measurements).
+================================================================================

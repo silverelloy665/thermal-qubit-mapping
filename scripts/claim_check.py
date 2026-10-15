@@ -507,6 +507,26 @@ def audit_analysis_exposure_and_esp(readme_content: str, analysis_dir="results/a
         if re.search(r"(?:layout[_\s]*explain|thermal[_\s]*layout[_\s]*explain)\b.*?\b(?:finding|evidence|result|confirms|demonstrates|proves)", sf_content, re.IGNORECASE):
             return False, "Forbidden citation of layout explain diagnostic as finding in slide_facts.txt."
 
+    # Rule 14 (U): Refuse hardware thermal evidence claims
+    for line in readme_content.splitlines():
+        for sent in re.split(r'[\.\;\n]', line):
+            sent_l = sent.lower()
+            if re.search(r"\b(?:hardware\s+evidence\s+(?:for|of)|evidence\s+from\s+hardware\s+(?:for|supports?)|hardware\s+(?:confirms|validates|proves)\s+(?:the\s+)?thermal)\b", sent_l):
+                if not re.search(r"\b(?:no|not|cannot|neither|fails?\s+to|without|zero|lacks?|unsupported)\b", sent_l):
+                    return False, f"Forbidden claim of hardware evidence for thermal mapping: '{sent.strip()}'"
+            if re.search(r"\bthermal\s+(?:term|model|penalty|mapping)\s+(?:is\s+)?(?:supported|validated|proven|demonstrated)\s+by\s+hardware\b", sent_l):
+                if not re.search(r"\b(?:no|not|cannot|neither|fails?\s+to|without|zero|lacks?|unsupported)\b", sent_l):
+                    return False, f"Forbidden claim that thermal term is supported by hardware: '{sent.strip()}'"
+
+    # Rule 15 (U): Refuse unqualified "thermal qubit 125" claims
+    for line in readme_content.splitlines():
+        for sent in re.split(r'[\.\;\n]', line):
+            sent_l = sent.lower()
+            if "125" in sent_l and re.search(r"\bthermal\s+qubit\s+125\b|\bqubit\s+125\b.*?\b(?:is|as)\s+(?:a\s+)?thermal\s+qubit\b", sent_l):
+                qualifiers = ["candidate", "unverified", "suspected", "defect", "tls", "apparent", "nominal", "anomaly", "requires persistence"]
+                if not any(q in sent_l for q in qualifiers):
+                    return False, f"Forbidden unqualified 'thermal qubit 125' claim: '{sent.strip()}'"
+
     return True, "Analysis claims verified."
 
 

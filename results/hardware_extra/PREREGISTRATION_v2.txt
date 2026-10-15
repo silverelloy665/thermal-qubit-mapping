@@ -1,0 +1,107 @@
+================================================================================
+PRE-REGISTRATION SPECIFICATION: HARDWARE HOT-SPOT STRESS TEST (VERSION 2)
+Commit date: Pre-registered prior to execution of any live hardware v2 runs
+================================================================================
+
+1. CORE RESEARCH HYPOTHESIS & SCIENTIFIC QUESTION
+--------------------------------------------------------------------------------
+Research Question:
+On a real IBM Heron processor (ibm_marrakesh), does a circuit layout containing a
+verified persistent high-excess qubit perform worse than the best layout that avoids
+it within the same local spatial region of the device?
+
+Metric Labeling & Definition of excess_v2:
+Excess excited-state population is strictly labeled and quantified as:
+  excess_v2 = P(1|0) - calibrated prob_meas1_prep0
+(Fallback: excess_v2 = P(1|0) - readout_error, if asymmetric calibration unexposed).
+
+2. AMENDED HOT QUBIT DEFINITION & PERSISTENCE RULE
+--------------------------------------------------------------------------------
+Unlike the v1 protocol (which relied on a single unrepeated characterization snapshot),
+a qubit is classified as HOT under v2 if and only if it satisfies the PERSISTENCE RULE:
+  1. excess_v2 > 0.05 in BOTH simultaneous register repetitions (Block A rep0 AND rep1).
+  2. excess_v2 > 0.05 in graph-isolated measurement (Block B, distance >= 3 from other measured qubits).
+  3. Calibrated readout error ro <= 0.20 (excluding pure measurement failures).
+
+Qubits hot in Block A but cold in Block B are classified as "crosstalk-suspect" and
+excluded from the hot-spot experiment. If zero qubits pass the persistence rule,
+the runner refuses to construct an execution plan; the absence of persistent hot spots
+is itself recorded as an empirical finding.
+
+Critical Prior Scientific Caveat:
+A qubit with P(1|0) >= 0.20 (such as qubit 125, P10 = 0.42) is expected to degrade
+circuit performance trivially due to state-initialization and bit-flip errors. This test
+evaluates whether calibration/p1 data reliably predicts that degradation in spatial
+routing, NOT whether dilution refrigerator temperature physics is confirmed.
+
+3. EXPERIMENTAL CONDITIONS & LAYOUT DEFINITIONS
+--------------------------------------------------------------------------------
+For each candidate region centered at persistent hot qubit h within topological
+neighborhood radius R <= 4 (B_4(h)):
+  - HOT layout:       Layout maximizing standard ESP among all connected 5-qubit
+                      subgraphs containing h: argmax_{S subset B_4(h), h in S} ESP_std(S)
+  - CLEAN layout:     Layout maximizing standard ESP among all connected 5-qubit
+                      subgraphs strictly avoiding h: argmax_{S subset B_4(h), h not in S} ESP_std(S)
+  - Thermal-ESP arm:  Layout selected by optimizing the thermal ESP metric within B_4(h).
+
+4. IDENTICAL GATES & TRANSPILER PASSES
+--------------------------------------------------------------------------------
+All circuits (GHZ-5, BV-5, Mirror-5) are compiled under the identical optimization
+pipeline (SABRE routing across seeds {0, 1, 2}, optimization_level=3) to native Heron
+gates (CZ, RZ, SX, X).
+
+5. TWO-QUBIT GATE CONFOUNDING RULE
+--------------------------------------------------------------------------------
+Formula:
+  Delta_2Q = | 2Q_count(CLEAN) - 2Q_count(HOT) |
+Rule:
+  If Delta_2Q > 4, the cell is flagged as CONFOUNDED by routing overhead. Confounded
+  cells are reported transparently for completeness but are strictly EXCLUDED from the
+  primary statistical hypothesis test.
+
+6. PRIMARY OUTCOME & PRE-REGISTERED DECISION RULE
+--------------------------------------------------------------------------------
+Primary Metric:
+  Paired difference in ground-state / ideal-state success probability:
+    Delta_success = success_prob(CLEAN) - success_prob(HOT)
+  evaluated per valid (non-confounded) cell across 2 repetitions of 8,192 shots
+  (16,384 total pooled shots per condition).
+
+Pre-Registered Decision Rule:
+  - A valid cell demonstrates a significant effect if the Wilson-based 95% confidence
+    interval of (CLEAN - HOT) excludes 0 in the predicted direction (lower bound > 0)
+    AND the difference is >= 0.5 percentage points.
+  - The experimental benchmark is CONFIRMED if and only if a majority (>= 50%) of valid,
+    non-confounded cells demonstrate a significant effect.
+
+7. OUTCOME INTERPRETATION TABLE
+--------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------
+Outcome Pattern                      Statistical Finding                Scientific Interpretation
+---------------------------------------------------------------------------------------------------
+A. CLEAN > HOT in majority of valid  Delta > 0, CI excludes 0 in        Confirms that persistent p1
+   cells (non-confounded)            predicted direction                excess degrades algorithmic
+                                                                        fidelity and spatial routing
+                                                                        successfully mitigates it.
+
+B. CLEAN ~= HOT across valid cells   CI of difference includes 0        Indicates that measured p1
+                                     or Delta < 0.5 pt                  excess does not translate into
+                                                                        circuit-level degradation (e.g.
+                                                                        readout-only errors or drive
+                                                                        compensation).
+
+C. CLEAN < HOT in valid cells        Delta < 0, CI excludes 0 in        Refutes the predictive validity
+                                     inverted direction                 of p1 calibration data for
+                                                                        spatial layout selection.
+
+D. Zero persistent hot qubits found  Script refuses plan generation     Demonstrates that apparent hot
+   in p1(v2) protocol                prior to QPU execution             spots in single snapshots were
+                                                                        transients or readout crosstalk
+                                                                        artifacts, not physical features.
+
+E. Confounded by 2Q overhead        Delta_2Q > 4 in all regions        Inconclusive: topological routing
+   in all available regions                                             costs dominate any potential
+                                                                        thermal fidelity advantage.
+---------------------------------------------------------------------------------------------------
+================================================================================
+

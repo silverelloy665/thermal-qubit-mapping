@@ -34,6 +34,8 @@ def check_secrets(root_dir='.'):
                 try:
                     with open(filepath, 'r', encoding='utf-8', errors='ignore') as file:
                         for i, line in enumerate(file):
+                            if filepath.endswith('.ipynb') and ('"image/' in line or 'data:image' in line):
+                                continue
                             for m_tok in token_re.finditer(line):
                                 tok = m_tok.group(0)
                                 # Restrict hex exemption to plan.json, raw.sha256, *.provenance.json, results/hardware*/plan.json

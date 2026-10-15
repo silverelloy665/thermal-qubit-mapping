@@ -33,11 +33,24 @@ To penalize thermal excitation while preventing double-counting of readout assig
 1. **Excess Over Readout (`excess_over_readout`, Recommended)**:
    Because laboratory measurement of $P(1|0)$ naturally contains readout misclassification errors ($\epsilon_{\text{ro}}$), the true excess thermal population is bounded by:
    $$p_{1, \text{excess}}(q) = \max(0, P(1|0)_q - \epsilon_{\text{ro}, q})$$
-   $$\text{ESP}_{\text{thermal}} = \text{ESP}_{\text{std}} \times \prod_{q \in \mathcal{Q}_{\text{active}}} (1 - p_{1, \text{excess}}(q))$$
+   $$\text{ESP}_{\text{thermal}} = \text{ESP}_{\text{std}} \times \prod_{q \in \mathcal{Q}_{\text{active}}} (1 - p_{1, \text{excess}}(q))^2$$
 
 2. **Raw Upper Bound (`raw_upper_bound`)**:
    Treats the measured excited-state population as an independent upper-bound penalty on qubit initialization:
-   $$\text{ESP}_{\text{thermal}} = \text{ESP}_{\text{std}} \times \prod_{q \in \mathcal{Q}_{\text{active}}} (1 - p_1(q))$$
+   $$\text{ESP}_{\text{thermal}} = \text{ESP}_{\text{std}} \times \prod_{q \in \mathcal{Q}_{\text{active}}} (1 - p_1(q))^2$$
+
+*Rationale for Quadratic Penalty*: As implemented in `compute_esp_base`, the quadratic penalty $(1 - \text{penalty})^2$ per active qubit accounts for state initialisation error (the qubit entering the circuit in $|1\rangle$ rather than $|0\rangle$) plus its compounding effect on final measurement classification.
+
+### Known Limitations of the $p_1$ Measurement
+
+An audit of the committed characterization protocol (`results/analysis_v2/p1_limits.txt`) identifies several structural limitations in the initial hardware $p_1$ measurement:
+1. **Single Snapshot**: All baseline $p_1$ data was collected in a single calibration run (`2026-10-09T00:18:39+05:30`), capturing only a single operating point rather than temporal drift.
+2. **Simultaneous Readout Crosstalk**: All 156 qubits were measured simultaneously in a single register, creating potential measurement-line multiplexing and readout crosstalk.
+3. **Symmetric Error Subtraction**: The excess calculation subtracts the symmetric calibrated readout error $\epsilon_{\text{ro}}$ from $P(1|0)$, even though $P(0|1)$ was recorded ($P(0|1) - P(1|0)$ differs markedly chip-wide).
+4. **Zero Clipping**: Exactly **81 of 156 qubits** (51.9%) have their calculated excess clipped to 0.0 because measured $P(1|0)$ falls at or below the calibrated readout error.
+5. **Statistical Significance Margins**: While 43 qubits exhibit excess $> 0.01$, only **30 of 43** survive a $2\text{-SE}$ margin ($\text{excess} - 2\cdot\text{SE} > 0.01$). For excess $> 0.05$, only **6 of 7** survive a $2\text{-SE}$ margin.
+6. **Qubit 125 Anomaly**: Qubit 125 displays an extreme $P(1|0) = 0.4214$, $P(0|1) = 0.1333$, and calibrated readout error $\epsilon_{\text{ro}} = 0.0096$. An excitation probability of $42\%$ cannot arise from dilution refrigerator thermal equilibrium ($15\text{ mK}$ implies $P(1|0) < 10^{-4}$); it strongly indicates a local defect, two-level system (TLS) fluctuator, or active drive leak rather than a physical thermal gradient.
+7. **Calibration Staleness in Thermal-Arm Rerun**: The exploratory thermal-arm rerun on 12 Oct paired a fresh calibration snapshot (`2026-10-12T23:40:00+05:30`) with the 9 Oct $p_1$ file (3 days stale), introducing cross-calibration temporal drift.
 
 ---
 

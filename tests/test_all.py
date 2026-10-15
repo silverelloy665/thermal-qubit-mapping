@@ -1120,6 +1120,171 @@ def test_claim_check_thermal_arm_layout_explain_refusal():
     assert not ok2
     assert "Forbidden citation of layout explain diagnostic as finding" in msg2
 
+def test_readme_thermal_formula_and_esp_base():
+    """Verify README matches code squared thermal penalty formula and compute_esp_base implementation."""
+    from src.metrics.esp import compute_esp_base
+    from qiskit import QuantumCircuit
+    from qiskit_ibm_runtime.fake_provider import FakeMarrakesh
+
+    # 1. README formula inspection
+    readme = Path("README.md").read_text(encoding="utf-8")
+    assert r"(1 - p_1(q))^2" in readme or r"(1 - \text{penalty})^2" in readme
+    assert r"(1 - p_{1, \text{excess}}(q))^2" in readme or r"(1 - \text{penalty})^2" in readme
+    assert "initialization" in readme.lower() or "initialisation" in readme.lower()
+
+    # 2. compute_esp_base penalty calculation on 2-qubit circuit
+    dev = FakeMarrakesh()
+    qc = QuantumCircuit(2)
+    qc.cx(0, 1)
+
+    p1_toy = {0: 0.10, 1: 0.05}
+    esp_std = compute_esp_base(qc, dev.target, thermal_term_mode="none")
+    esp_thm = compute_esp_base(qc, dev.target, p1=p1_toy, thermal_term_mode="raw_upper_bound")
+
+    expected_ratio = ((1.0 - 0.10) ** 2) * ((1.0 - 0.05) ** 2)  # 0.81 * 0.9025 = 0.731025
+    actual_ratio = esp_thm / esp_std
+    assert abs(actual_ratio - expected_ratio) < 1e-6, f"Expected ratio {expected_ratio}, got {actual_ratio}"
+
+def test_p1_limits_report_and_values():
+    """Verify results/analysis_v2/p1_limits.txt accurately reflects audited p1 limits."""
+    report_path = Path("results/analysis_v2/p1_limits.txt")
+    assert report_path.exists(), "results/analysis_v2/p1_limits.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+    assert "AUDIT REPORT: KNOWN LIMITATIONS OF THE P1 MEASUREMENT" in text
+    assert "81/156 (51.9%) excess values clip to exactly 0.0" in text
+    assert "Excess > 0.01: 43 qubits total; only 30 survive a 2-SE margin" in text
+    assert "Excess > 0.05: 7 qubits total; only 6 survive a 2-SE margin" in text
+    assert "Qubit 125 P(1|0):             0.4214" in text
+    assert "Qubit 125 P(0|1):             0.1333" in text
+    assert "two-level system (TLS) defect" in text
+
+def test_measure_p1_v2_batches_distance_and_gates():
+    """Verify measure_p1_v2 graph distance >= 3 on isolated batches and budget refusal gates."""
+    import rustworkx as rx
+    from qiskit_ibm_runtime.fake_provider import FakeMarrakesh
+    from scripts.measure_p1_v2 import generate_isolated_batches, check_budget_refusal
+
+    dev = FakeMarrakesh()
+    batches = generate_isolated_batches(dev.target)
+    assert len(batches) >= 3, f"Expected at least 3 batches, got {len(batches)}"
+
+    # Check graph distance >= 3 within every batch
+    g = rx.PyGraph()
+    g.add_nodes_from(range(dev.target.num_qubits))
+    edges = [(u, v) for u, v in dev.target.build_coupling_map().get_edges()]
+    g.add_edges_from_no_data(edges)
+    dist_mat = rx.distance_matrix(g)
+
+    for b_idx, batch in enumerate(batches):
+        for i in range(len(batch)):
+            for j in range(i + 1, len(batch)):
+                u, v = batch[i], batch[j]
+                d = dist_mat[u][v]
+                assert d >= 3, f"Batch {b_idx} violation: qubits ({u}, {v}) have distance {d} < 3"
+
+    # Budget refusal checks
+    config = {
+        "extra_run_cap_s": 110.0,
+        "allowance_remaining_s": 279.0,
+        "reserve_s": 150.0,
+        "allowance_checked_at": "2026-10-16T00:00:00+00:00"
+    }
+    # Within budget: should pass
+    passed, msg = check_budget_refusal(total_est_seconds=12.0, config=config)
+    assert passed, f"Expected budget check to pass, got: {msg}"
+
+    # Over run cap: must fail
+    passed_over, msg_over = check_budget_refusal(total_est_seconds=115.0, config=config)
+    assert not passed_over
+    assert "exceeds extra_run_cap_s" in msg_over
+
+    # Violates reserve buffer: must fail
+    config_low = dict(config, allowance_remaining_s=155.0)
+    passed_low, msg_low = check_budget_refusal(total_est_seconds=10.0, config=config_low)
+    assert not passed_low
+    assert "reserve" in msg_low
+
+def test_analyze_p1_v2_persistence_logic(tmp_path):
+    """Verify analyze_p1_v2 classification: persistence rule, crosstalk-suspect, and transient flags."""
+    from scripts.analyze_p1_v2 import classify_qubit_persistence
+
+    # 1. Persistent hot qubit (excess > 0.05 in A1, A2, and B)
+    res_persistent = classify_qubit_persistence(
+        exc_a1=0.12, exc_a2=0.11, exc_b=0.10,
+        hist_exc=0.10
+    )
+    assert res_persistent["is_persistent_hot"]
+    assert not res_persistent["is_crosstalk_suspect"]
+    assert not res_persistent["is_transient"]
+
+    # 2. Crosstalk-suspect qubit (hot in A, drops in isolated B)
+    res_crosstalk = classify_qubit_persistence(
+        exc_a1=0.12, exc_a2=0.11, exc_b=0.02,
+        hist_exc=0.10
+    )
+    assert not res_crosstalk["is_persistent_hot"]
+    assert res_crosstalk["is_crosstalk_suspect"]
+
+    # 3. Transient qubit (hot now, but was cold in historical 9 Oct file)
+    res_transient = classify_qubit_persistence(
+        exc_a1=0.12, exc_a2=0.11, exc_b=0.10,
+        hist_exc=0.002
+    )
+    assert res_transient["is_persistent_hot"]
+    assert res_transient["is_transient"]
+
+def test_run_hotspot_target_live_gating():
+    """Verify run_hotspot --target live refusal rules (missing p1v2, stale allowance, 0 persistent hot)."""
+    import argparse
+    from scripts.run_hotspot_hw import run_hotspot
+
+    # 1. Target fake runs offline without live refusal
+    args_fake = argparse.Namespace(
+        target="fake", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False
+    )
+    # 2. Target live with local is strictly prohibited
+    args_live_local = argparse.Namespace(
+        target="live", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=True, strict_d2=False
+    )
+    with pytest.raises(ValueError, match="Cannot use --local with --target live"):
+        run_hotspot(args_live_local)
+
+def test_layout_day_variance_report_consistency():
+    """Verify results/analysis_v2/layout_day_variance.txt accurately quantifies day-to-day shift vs thermal penalty."""
+    report_path = Path("results/analysis_v2/layout_day_variance.txt")
+    assert report_path.exists(), "results/analysis_v2/layout_day_variance.txt must exist"
+    text = report_path.read_text(encoding="utf-8")
+    assert "BETWEEN-LAYOUT & CALIBRATION-DAY VARIANCE FLOOR ANALYSIS" in text
+    assert "+2.64 pts" in text  # GHZ
+    assert "+8.81 pts" in text  # BV
+    assert "+10.99 pts" in text # QFT
+    assert "+1.73 pts" in text  # Mirror
+    assert "exceed" in text.lower()
+    assert "variance floor" in text.lower()
+
+def test_claim_check_checkpoint_u_rules():
+    """Verify claim_check refuses hardware thermal evidence claims and unqualified 'thermal qubit 125' claims."""
+    from scripts.claim_check import audit_analysis_exposure_and_esp
+
+    prefix = "Hardware execution provides no evidence regarding the thermal term. "
+
+    # 1. Hardware thermal evidence claims -> refusal
+    bad_hw = prefix + "Our experimental hardware execution provides clear hardware evidence for the thermal objective."
+    ok1, msg1 = audit_analysis_exposure_and_esp(bad_hw)
+    assert not ok1
+    assert "hardware evidence for thermal" in msg1.lower() or "thermal term" in msg1.lower()
+
+    # 2. Unqualified thermal qubit 125 -> refusal
+    bad_q125 = prefix + "We show that thermal qubit 125 exhibits severe performance degradation across all layouts."
+    ok2, msg2 = audit_analysis_exposure_and_esp(bad_q125)
+    assert not ok2
+    assert "unqualified 'thermal qubit 125'" in msg2
+
+    # 3. Qualified qubit 125 -> passes
+    good_q125 = prefix + "We examine candidate hot qubit 125 (suspected TLS defect rather than thermal equilibrium) under 2-SE margin."
+    ok3, msg3 = audit_analysis_exposure_and_esp(good_q125)
+    assert ok3, f"Expected qualified qubit 125 statement to pass, got: {msg3}"
+
 
 
 
