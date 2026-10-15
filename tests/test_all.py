@@ -1809,7 +1809,7 @@ def test_checkpoint_x3_execute_without_target_live_refusal():
     assert "--target live" in str(exc_h.value)
 
 
-def test_checkpoint_x4_pilot_file_path_sharing_and_origin(monkeypatch):
+def test_checkpoint_x4_pilot_file_path_sharing_and_origin(monkeypatch, tmp_path):
     """X4: Confirm pilot path sharing and prove live-origin satisfies gate while local does not."""
     import time
     import json
@@ -1873,9 +1873,15 @@ def test_checkpoint_x4_pilot_file_path_sharing_and_origin(monkeypatch):
     pilot_file.write_text(json.dumps(live_pilot), encoding="utf-8")
 
     # In local rehearsal mode with matching plan, this live pilot structure is accepted
+    tmp_plan = tmp_path / "plan.json"
+    import shutil
+    shutil.copy("results/hardware_extra/plan.json", tmp_plan)
+
     args_rehearsal = argparse.Namespace(
         target="fake", dry_run=False, execute=True, pilot=False, approve_seconds=est_approve,
-        local=True, strict_d2=False, descriptive=True
+        local=True, strict_d2=False, descriptive=True,
+        out_plan=str(tmp_plan), out_summary=str(tmp_path / "summary.txt"),
+        out_confounding=str(tmp_path / "confounding.txt")
     )
     run_hotspot(args_rehearsal)  # must complete without raising pilot error
 
@@ -2284,6 +2290,28 @@ def test_z3_compare_backends_p1_and_claim_check(tmp_path):
     # Rule 16: Claim check must pass currently (no Fez mentions in README)
     ok, msg = audit_readme()
     assert ok, f"Claim check failed: {msg}"
+
+
+def test_dashboard_cross_verification(tmp_path):
+    """Verify that dashboard facts cross-verification report runs and validates all metrics."""
+    from scripts.cross_verify_dashboard import run_cross_verification
+
+    out_file = tmp_path / "dashboard_cross_verification.txt"
+    report = run_cross_verification(output_path=str(out_file))
+
+    assert "IBM QUANTUM PLATFORM DASHBOARD CROSS-VERIFICATION REPORT" in report
+    assert "db6j0o04qg6s73c4sp20" in report
+    assert "db3uvecvf2bc73ctqto0" in report
+    assert "db3uv1cvf2bc73ctqt1g" in report
+    assert "db3usd2mb58s7388dskg" in report
+    assert "db3ur4slf4us73c1v5pg" in report
+    assert "279 s" in report and "37 s" in report and "242 s" in report
+    assert "spendable_s = 242 - 150" in report
+    assert "ibm_marrakesh" in report and "ibm_fez" in report and "ibm_kingston" in report
+    assert "2.294 s/PUB" in report
+    assert "3.00 s/PUB" in report
+    assert out_file.exists()
+
 
 
 

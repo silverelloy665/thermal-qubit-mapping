@@ -1,0 +1,64 @@
+====================================================================================
+IBM QUANTUM PLATFORM DASHBOARD CROSS-VERIFICATION REPORT
+Source: User dashboard screenshot (quantum.cloud.ibm.com)
+Reference Image: media_1792105898740_f591cea2.png
+====================================================================================
+
+SECTION 1: WORKLOAD TRACEABILITY & JOB ID VERIFICATION
+------------------------------------------------------------------------------------
+Job Prefix       | Full Job ID            | Date/Time          | Backend        | Dash(s)  | Status     | Role
+-----------------------------------------------------------------------------------------------------------------------------
+db6j0o04qg6s7... | db6j0o04qg6s73c4sp20   | 10/13/26, 12:39 AM | ibm_marrakesh  | 37       | CONFIRMED  | Hardware Thermal-Arm Rerun
+db3uvecvf2bc7... | db3uvecvf2bc73ctqto0   | 10/9/26, 1:02 AM   | ibm_marrakesh  | 39       | CONFIRMED  | Main Benchmark Repetition 1
+db3uv1cvf2bc7... | db3uv1cvf2bc73ctqt1g   | 10/9/26, 1:01 AM   | ibm_marrakesh  | 39       | CONFIRMED  | Main Benchmark Repetition 0
+db3usd2mb58s...  | db3usd2mb58s7388dskg   | 10/9/26, 12:55 AM  | ibm_marrakesh  | 4        | CONFIRMED  | p1 Characterization Job
+db3ur4slf4us73... | db3ur4slf4us73c1v5pg   | 10/9/26, 12:52 AM  | ibm_marrakesh  | 4        | CONFIRMED  | Pilot Calibration Job
+das06p3g95ks7... | das06p3g95ks7... [dashboard prefix] | 9/26/26, 11:09 PM  | ibm_fez        | 2        | ACCOUNT_HIST | Exploratory Pilot / Test on Fez
+das05sjg95ks7... | das05sjg95ks7... [dashboard prefix] | 9/26/26, 11:07 PM  | ibm_marrakesh  | 3        | ACCOUNT_HIST | Exploratory Pilot / Test on Marrakesh
+
+Workload Audit Key Takeaways:
+  1. All 5 project jobs executed between 10/9/26 and 10/13/26 are accounted for.
+  2. Repetition 0 (db3uv1cvf2bc73ctqt1g) and Repetition 1 (db3uvecvf2bc73ctqto0) exactly match 39s recorded QPU runtime.
+  3. Pilot job db3ur4slf4us73c1v5pg and p1 job db3usd2mb58s7388dskg match 4s recorded QPU runtime.
+  4. Thermal-arm rerun db6j0o04qg6s73c4sp20 is confirmed at 37s (planned 48s).
+  5. Historical jobs from 9/26 confirm prior successful execution on both ibm_fez (2s) and ibm_marrakesh (3s).
+
+SECTION 2: ALLOWANCE ARITHMETIC & RECONCILIATION
+------------------------------------------------------------------------------------
+  - Stored allowance prior to thermal rerun:      279 s
+  - Thermal-arm measured execution runtime:     - 37 s
+  - Calculated reconciled allowance:             = 242 s
+  - Dashboard observed remaining quota:            242 s (4m 2s, 40%)
+  - Exact arithmetic reconciliation:               242 s == 242 s [EXACT MATCH]
+  - Pre-registered reserve buffer (reserve_s):     150 s (strictly preserved)
+  - Spendable allowance for Checkpoint Z:          92 s (spendable_s = 242 - 150)
+
+SECTION 3: BACKEND FLEET STATUS & TOPOLOGY CROSS-VERIFICATION
+------------------------------------------------------------------------------------
+  - ibm_marrakesh : 156 qubits, Heron r2, us-east | Status: Operational (green) | Role: Primary Target (PREREG_v2_4)
+  - ibm_fez       : 156 qubits, Heron r2, us-east | Status: Operational (green) | Role: Second Device Addendum (PREREG_v2_4_addendum)
+  - ibm_kingston  : 156 qubits, Heron r2, us-east | Status: Operational (green) | Role: Fleet Peer (unassigned)
+
+Fleet Audit Findings:
+  1. Both candidate devices (ibm_marrakesh, ibm_fez) are online, healthy, and operational.
+  2. Hardware family is homogeneous across all 3 available systems (Heron r2, 156 qubits, us-east).
+
+SECTION 4: EMPIRICAL TIMING MODEL & SCALING ANALYSIS
+------------------------------------------------------------------------------------
+Empirical rate on ibm_marrakesh:
+  - Main benchmark Rep 0:   17 PUBs / 39 s = 2.294 s/PUB
+  - Main benchmark Rep 1:   17 PUBs / 39 s = 2.294 s/PUB
+  - Thermal-arm rerun:      16 PUBs / 37 s = 2.313 s/PUB
+  - Batched average rate:   ~2.30 s/PUB
+  - Planning scale model:   3.00 s/PUB (pre-registered conservative default)
+  - Safety conservatism:    +30.4% margin over empirical execution rate
+
+Execution Quantum Floor for Small Jobs:
+  - Pilot calibration (1 circuit):       4 s measured
+  - p1 characterization (1 circuit):     4 s measured
+  - Fez test job (1 circuit):            2 s measured
+  - Marrakesh test job (1 circuit):      3 s measured
+  - Implication: Single-circuit jobs experience ~1.5 - 2.0s initialization overhead.
+====================================================================================
+CONCLUSION: ALL DASHBOARD OBSERVATIONS FULLY VERIFIED AND CONSISTENT
+====================================================================================
