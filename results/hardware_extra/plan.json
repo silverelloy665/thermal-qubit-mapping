@@ -6,8 +6,9 @@
   "decision_rule": "hot-spot penalty confirmed for a benchmark only if among primary cells (matched & non-confounded), pooled CLEAN - HOT Newcombe 95% CI lower bound > 0 and diff >= 0.5 pt in >= 50% of cells with N_primary >= 4.",
   "comparator_rule": "CLEAN_matched = argmax ESP_std among clean connected 5q subgraphs in B_4(h) with ESP_std <= ESP_std(HOT), within 0.03, and |Delta 2Q| <= 4; else UNMATCHABLE (not executed). Negative control CLEAN2 matched similarly.",
   "confounding_threshold_2q": 4,
-  "power_status": "INCONCLUSIVE (underpowered: 2 primary cells < 4 required)",
+  "power_status": "INCONCLUSIVE (underpowered: 2 countable cells < 4 required)",
   "primary_cell_count": 2,
+  "countable_cell_count": 2,
   "is_underpowered": true,
   "descriptive_mode": false,
   "backend": "fake_marrakesh",
@@ -17,33 +18,35 @@
   "circuit_hashes": [
     "dd0c1b19fc0ffd2f-c0655dad1dd9f2b3-75defc324107c39e-fb0dd7d450561f28",
     "f1f5f90ecb9d686d-c0be4c4e4948a626-90a8d582dd4fbad1-21e6c75f13f29664",
+    "43d5843ec1ade75a-a221105bfaeb9dfd-0e27260f30b6aaba-b165ec65cce2bff1",
     "865bb1f4f2e4395a-30a346ea3afe9afd-019686a013a7029f-78a6905f915b7088",
-    "33773d4e1d524cb9-679849d73a7f1d6c-e509e03154ab79bb-42502b1bf1aa29cc"
+    "33773d4e1d524cb9-679849d73a7f1d6c-e509e03154ab79bb-42502b1bf1aa29cc",
+    "41a4a78b99031a4b-a795cbd70db4079d-49de7cd7fbad8417-a9afba8e364f6c17"
   ],
-  "circuit_count_before": 4,
-  "circuit_count_after": 4,
+  "circuit_count_before": 6,
+  "circuit_count_after": 6,
   "per_circuit_estimate_seconds": 3.0,
-  "per_job_estimate_seconds": 12.0,
-  "total_estimate_seconds": 24.0,
+  "per_job_estimate_seconds": 18.0,
+  "total_estimate_seconds": 36.0,
   "p1v2_estimate_seconds": 72.0,
   "allowance_remaining_s": 279.0,
   "allowance_source": "dashboard 11 Oct 2026 (TODO: update before live run)",
-  "allowance_checked_at": "2026-10-11T12:00:00+00:00",
+  "allowance_checked_at": "2020-01-01T00:00:00+00:00",
   "reserve_s": 150.0,
   "extra_run_cap_s": 110.0,
-  "remaining_after_run_s": 180.0,
+  "remaining_after_run_s": 168.0,
   "budget_scenarios": {
     "scenario1_p1v2_only": {
       "spend": 75.0,
       "remaining": 204.0
     },
     "scenario2_p1v2_plus_plan": {
-      "spend": 99.0,
-      "remaining": 180.0
+      "spend": 111.0,
+      "remaining": 168.0
     },
     "scenario3_with_reserve": {
-      "spend": 99.0,
-      "remaining_buffer": 30.0,
+      "spend": 111.0,
+      "remaining_buffer": 18.0,
       "reserve_s": 150.0
     }
   },
@@ -83,6 +86,8 @@
           "status": "UNMATCHABLE",
           "executed": false,
           "is_primary": false,
+          "is_countable": false,
+          "clean2_cand_count": 0,
           "hot_layout": [
             125,
             126,
@@ -101,6 +106,7 @@
           "clean2_layout": null,
           "clean2_esp": -1.0,
           "clean2_overlap": null,
+          "clean2_overlap_hot": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -126,6 +132,8 @@
           "status": "PRIMARY",
           "executed": true,
           "is_primary": true,
+          "is_countable": true,
+          "clean2_cand_count": 64,
           "hot_layout": [
             125,
             126,
@@ -140,12 +148,19 @@
             137,
             147
           ],
-          "has_clean2": false,
-          "clean2_layout": null,
-          "clean2_esp": -1.0,
-          "clean2_overlap": null,
-          "clean2_2q": 0,
-          "clean2_depth": 0,
+          "has_clean2": true,
+          "clean2_layout": [
+            85,
+            86,
+            87,
+            97,
+            107
+          ],
+          "clean2_esp": 0.8940154821179878,
+          "clean2_overlap": 0,
+          "clean2_overlap_hot": 0,
+          "clean2_2q": 11,
+          "clean2_depth": 23,
           "thermal_esp_layout": [
             126,
             127,
@@ -169,6 +184,8 @@
           "status": "UNMATCHABLE",
           "executed": false,
           "is_primary": false,
+          "is_countable": false,
+          "clean2_cand_count": 0,
           "hot_layout": [
             123,
             124,
@@ -187,6 +204,7 @@
           "clean2_layout": null,
           "clean2_esp": -1.0,
           "clean2_overlap": null,
+          "clean2_overlap_hot": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -240,6 +258,8 @@
           "status": "PRIMARY",
           "executed": true,
           "is_primary": true,
+          "is_countable": true,
+          "clean2_cand_count": 55,
           "hot_layout": [
             21,
             22,
@@ -254,12 +274,19 @@
             40,
             41
           ],
-          "has_clean2": false,
-          "clean2_layout": null,
-          "clean2_esp": -1.0,
-          "clean2_overlap": null,
-          "clean2_2q": 0,
-          "clean2_depth": 0,
+          "has_clean2": true,
+          "clean2_layout": [
+            27,
+            28,
+            29,
+            30,
+            31
+          ],
+          "clean2_esp": 0.9199151831220158,
+          "clean2_overlap": 0,
+          "clean2_overlap_hot": 0,
+          "clean2_2q": 4,
+          "clean2_depth": 16,
           "thermal_esp_layout": [
             20,
             21,
@@ -283,6 +310,8 @@
           "status": "CONFOUNDED",
           "executed": false,
           "is_primary": false,
+          "is_countable": false,
+          "clean2_cand_count": 0,
           "hot_layout": [
             16,
             20,
@@ -301,6 +330,7 @@
           "clean2_layout": null,
           "clean2_esp": -1.0,
           "clean2_overlap": null,
+          "clean2_overlap_hot": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -326,6 +356,8 @@
           "status": "UNMATCHABLE",
           "executed": false,
           "is_primary": false,
+          "is_countable": false,
+          "clean2_cand_count": 0,
           "hot_layout": [
             3,
             16,
@@ -344,6 +376,7 @@
           "clean2_layout": null,
           "clean2_esp": -1.0,
           "clean2_overlap": null,
+          "clean2_overlap_hot": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -400,6 +433,8 @@
           "status": "UNMATCHABLE",
           "executed": false,
           "is_primary": false,
+          "is_countable": false,
+          "clean2_cand_count": 0,
           "hot_layout": [
             26,
             27,
@@ -418,6 +453,7 @@
           "clean2_layout": null,
           "clean2_esp": -1.0,
           "clean2_overlap": null,
+          "clean2_overlap_hot": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -443,6 +479,8 @@
           "status": "UNMATCHABLE",
           "executed": false,
           "is_primary": false,
+          "is_countable": false,
+          "clean2_cand_count": 0,
           "hot_layout": [
             7,
             8,
@@ -461,6 +499,7 @@
           "clean2_layout": null,
           "clean2_esp": -1.0,
           "clean2_overlap": null,
+          "clean2_overlap_hot": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -486,6 +525,8 @@
           "status": "UNMATCHABLE",
           "executed": false,
           "is_primary": false,
+          "is_countable": false,
+          "clean2_cand_count": 0,
           "hot_layout": [
             7,
             17,
@@ -504,6 +545,7 @@
           "clean2_layout": null,
           "clean2_esp": -1.0,
           "clean2_overlap": null,
+          "clean2_overlap_hot": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -528,5 +570,5 @@
       }
     }
   ],
-  "plan_hash": "c9d9ce817ad278425a64895d3ffa4dec9987c7d0a3b99213cb5561ed2faf056a"
+  "plan_hash": "fe22bb6162857e8e342737d5df8749980fdf8547566ef6ec58b4b8a2a6d0fda7"
 }

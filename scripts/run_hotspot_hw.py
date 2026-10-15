@@ -56,6 +56,31 @@ def compute_plan_hash(plan_dict):
     s = json.dumps(canonical, sort_keys=True).encode('utf-8')
     return hashlib.sha256(s).hexdigest()
 
+def compute_priority_step_status(spendable_s, is_allowance_stale, pilot_est=3.0, p1v2_est=72.0, plan_est=36.0):
+    """
+    Computes priority step gating (pilot -> p1v2 -> plan) for Checkpoint Y (Y6).
+    - If allowance_checked_at is older than 24h: all steps NO-GO.
+    - If fresh timestamp:
+        - step 1 (pilot): GO if pilot_est <= spendable_s else NO-GO
+        - step 2 (p1v2):  GO if pilot_est + p1v2_est <= spendable_s else NO-GO
+        - step 3 (plan):  GO if pilot_est + p1v2_est + plan_est <= spendable_s else NO-GO
+    """
+    if is_allowance_stale:
+        return {
+            "step1_pilot": ("NO-GO", "stored allowance > 24h old; update config first"),
+            "step2_p1v2": ("NO-GO", "stored allowance > 24h old; update config first"),
+            "step3_plan": ("NO-GO", "stored allowance > 24h old; update config first"),
+        }
+    pilot_ok = (pilot_est <= spendable_s)
+    p1v2_ok = (pilot_est + p1v2_est <= spendable_s)
+    plan_ok = (pilot_est + p1v2_est + plan_est <= spendable_s)
+    return {
+        "step1_pilot": ("GO" if pilot_ok else "NO-GO", f"est {pilot_est:.1f} s <= spendable {spendable_s:.1f} s" if pilot_ok else f"est {pilot_est:.1f} s > spendable {spendable_s:.1f} s"),
+        "step2_p1v2": ("GO" if p1v2_ok else "NO-GO", f"cumul {pilot_est + p1v2_est:.1f} s <= spendable {spendable_s:.1f} s" if p1v2_ok else f"cumul {pilot_est + p1v2_est:.1f} s > spendable {spendable_s:.1f} s"),
+        "step3_plan": ("GO" if plan_ok else "NO-GO", f"cumul {pilot_est + p1v2_est + plan_est:.1f} s <= spendable {spendable_s:.1f} s" if plan_ok else f"cumul {pilot_est + p1v2_est + plan_est:.1f} s > spendable {spendable_s:.1f} s"),
+    }
+
+
 def validate_isa(circuit, target):
     for inst in circuit.data:
         op = inst.operation
@@ -222,6 +247,10 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
     regions = []
     log_messages = []
 
+    # Precompute chip-wide clean 5q subgraphs for CLEAN2 negative control evaluation (Checkpoint Y / v2.4)
+    clean_nodes_all = [q for q in range(backend.num_qubits) if excess.get(q, 0.0) <= hot_min_excess and ro_err.get(q, 0.0) <= 0.20]
+    chip_clean_sgs = get_region_subgraphs(g, clean_nodes_all, 5)
+
     for idx, (h, exc_val, ro_val, p1_val) in enumerate(selected_hot, 1):
         # 1. Evaluate distance <= 2 first (per Step 2 specification)
         dists_d2 = rx.dijkstra_shortest_path_lengths(g, h, lambda _: 1.0)
@@ -318,41 +347,65 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
                 conf_reason = "Matched (|Delta 2Q| <= 4, ESP <= HOT and within 0.03)"
                 is_executed = True
 
-                # Checkpoint X (X5): CLEAN2 must share <= 2 qubits with CLEAN_matched (pick lowest overlap; if none, no CLEAN2)
+                # Checkpoint Y (Y4/Y5): CLEAN2 candidates are clean 5q subgraphs ANYWHERE on the chip
+                # <=2 shared qubits with CLEAN_matched and with HOT, same ESP window and 2Q rule
                 chosen_set = set(chosen["layout"])
+                hot_set = set(best_hot_lay)
                 clean2_cands = []
-                for c in matched[1:]:
-                    if c["layout"] != chosen["layout"]:
-                        ov = len(chosen_set.intersection(set(c["layout"])))
-                        if ov <= 2:
-                            clean2_cands.append((ov, c))
+                for sg in chip_clean_sgs:
+                    ov_clean = len(chosen_set.intersection(set(sg)))
+                    ov_hot = len(hot_set.intersection(set(sg)))
+                    if ov_clean <= 2 and ov_hot <= 2:
+                        tc = transpile(b_circ, target=target, initial_layout=sg, routing_method='sabre', optimization_level=3, seed_transpiler=42)
+                        esp = esp_standard(tc, target)
+                        c_2q = count_native_2q(tc, target)
+                        if esp <= best_hot_esp and esp >= (best_hot_esp - 0.03) and abs(c_2q - hot_2q) <= 4:
+                            clean2_cands.append({
+                                "layout": sg,
+                                "transpiled": tc,
+                                "esp": esp,
+                                "clean_2q": c_2q,
+                                "diff_2q": c_2q - hot_2q,
+                                "depth": tc.depth(),
+                                "ov_clean": ov_clean,
+                                "ov_hot": ov_hot,
+                                "total_ov": ov_clean + ov_hot
+                            })
 
+                clean2_cand_count = len(clean2_cands)
                 if clean2_cands:
-                    clean2_cands.sort(key=lambda item: (item[0], -item[1]["esp"]))
-                    lowest_ov, chosen_clean2 = clean2_cands[0]
+                    clean2_cands.sort(key=lambda item: (item["total_ov"], -item["esp"]))
+                    chosen_clean2 = clean2_cands[0]
                     has_clean2 = True
+                    is_countable = True
                     clean2_lay = chosen_clean2["layout"]
                     clean2_tc = chosen_clean2["transpiled"]
                     clean2_esp = chosen_clean2["esp"]
                     clean2_2q = chosen_clean2["clean_2q"]
                     clean2_depth = chosen_clean2["depth"]
-                    clean2_overlap = lowest_ov
+                    clean2_overlap = chosen_clean2["ov_clean"]
+                    clean2_overlap_hot = chosen_clean2["ov_hot"]
                 else:
                     has_clean2 = False
+                    is_countable = False
                     clean2_lay = None
                     clean2_tc = None
                     clean2_esp = -1.0
                     clean2_2q = 0
                     clean2_depth = 0
                     clean2_overlap = None
+                    clean2_overlap_hot = None
             else:
                 has_clean2 = False
+                is_countable = False
+                clean2_cand_count = 0
                 clean2_lay = None
                 clean2_tc = None
                 clean2_esp = -1.0
                 clean2_2q = 0
                 clean2_depth = 0
                 clean2_overlap = None
+                clean2_overlap_hot = None
                 is_executed = False
                 non_conf_candidates = [c for c in clean_candidates if abs(c["diff_2q"]) <= 4]
                 if non_conf_candidates:
@@ -389,12 +442,15 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
                 "status": status,
                 "executed": is_executed,
                 "is_primary": (status == "PRIMARY"),
+                "is_countable": is_countable,
+                "clean2_cand_count": clean2_cand_count,
                 "hot_layout": best_hot_lay,
                 "clean_layout": best_clean_lay,
                 "has_clean2": has_clean2,
                 "clean2_layout": clean2_lay,
                 "clean2_esp": clean2_esp,
                 "clean2_overlap": clean2_overlap,
+                "clean2_overlap_hot": clean2_overlap_hot,
                 "clean2_2q": clean2_2q,
                 "clean2_depth": clean2_depth,
                 "clean2_transpiled": clean2_tc,
@@ -784,23 +840,27 @@ def run_hotspot(args):
     remaining_after_run = rem_scen2
 
     # Power gate count
-    # Power gate count
     num_primary_cells = sum(
         1 for reg in regions
         for b_name, b_data in reg["benchmarks"].items()
         if b_data.get("status") == "PRIMARY"
     )
-    is_underpowered = (num_primary_cells < 4)
+    num_countable_cells = sum(
+        1 for reg in regions
+        for b_name, b_data in reg["benchmarks"].items()
+        if b_data.get("status") == "PRIMARY" and b_data.get("is_countable", False)
+    )
+    is_underpowered = (num_countable_cells < 4)
     if is_underpowered:
-        power_status = f"INCONCLUSIVE (underpowered: {num_primary_cells} primary cells < 4 required)"
+        power_status = f"INCONCLUSIVE (underpowered: {num_countable_cells} countable cells < 4 required)"
         if getattr(args, "descriptive", False):
             power_status += " [DESCRIPTIVE, NOT CONFIRMATORY MODE]"
     else:
-        power_status = f"ADEQUATE ({num_primary_cells} primary cells >= 4 required)"
+        power_status = f"ADEQUATE ({num_countable_cells} countable cells >= 4 required)"
 
     if is_underpowered and args.execute and not getattr(args, "descriptive", False):
         raise ValueError(
-            f"Refusal: Plan has only {num_primary_cells} primary cells (< 4 required for confirmatory test). "
+            f"Refusal: Plan has only {num_countable_cells} countable cells (< 4 required for confirmatory test). "
             "To execute in descriptive/exploratory mode, pass --descriptive."
         )
 
@@ -845,6 +905,7 @@ def run_hotspot(args):
         "confounding_threshold_2q": 4,
         "power_status": power_status,
         "primary_cell_count": num_primary_cells,
+        "countable_cell_count": num_countable_cells,
         "is_underpowered": is_underpowered,
         "descriptive_mode": getattr(args, "descriptive", False),
         "backend": backend_name,
@@ -882,29 +943,24 @@ def run_hotspot(args):
 
     # Generate printable summary report
     spendable_s = allowance_remaining - reserve_s
+    step_status = compute_priority_step_status(
+        spendable_s, is_allowance_stale, pilot_usage, p1v2_estimate_seconds, total_estimate_seconds
+    )
     lines = []
     lines.append("=" * 80)
     if target_mode != "live":
         lines.append("[OFFLINE DRY RUN ON FakeMarrakesh - NOT EVIDENCE - DO NOT CITE]")
     if is_underpowered:
-        lines.append("[DESCRIPTIVE, NOT CONFIRMATORY - N_primary < 4]")
+        lines.append(f"[DESCRIPTIVE, NOT CONFIRMATORY - N_countable={num_countable_cells} < 4]")
     if is_allowance_stale:
         lines.append(f"[WARNING] Stored allowance was checked at {checked_at_str} ({allowance_age_sec/3600:.1f} h ago > 24h).")
-    lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN (v2.3)")
+    lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN (v2.4)")
     lines.append(f"Timestamp: {datetime.datetime.now(datetime.timezone.utc).isoformat()}")
     lines.append(f"  spendable_s = allowance_remaining_s ({allowance_remaining:.1f} s) - reserve_s ({reserve_s:.1f} s) = {spendable_s:.1f} s")
     lines.append("  PRIORITY STEP GATING (pilot -> p1v2 -> plan):")
-    if is_allowance_stale:
-        lines.append("    - Step 1 (Pilot: measure_p1_v2 --pilot):   NO-GO (stored allowance > 24h old; update config first)")
-        lines.append("    - Step 2 (p1v2:  measure_p1_v2 --execute): NO-GO (stored allowance > 24h old; update config first)")
-        lines.append("    - Step 3 (Plan:  run_hotspot_hw --execute): NO-GO (stored allowance > 24h old; update config first)")
-    else:
-        pilot_ok = (pilot_usage <= spendable_s)
-        p1v2_ok = (pilot_usage + p1v2_estimate_seconds <= spendable_s)
-        plan_ok = (pilot_usage + p1v2_estimate_seconds + total_estimate_seconds <= spendable_s)
-        lines.append(f"    - Step 1 (Pilot: measure_p1_v2 --pilot):   {'GO' if pilot_ok else 'NO-GO'} (est {pilot_usage:.1f} s <= spendable {spendable_s:.1f} s)")
-        lines.append(f"    - Step 2 (p1v2:  measure_p1_v2 --execute): {'GO' if p1v2_ok else 'NO-GO'} (cumul {pilot_usage + p1v2_estimate_seconds:.1f} s <= spendable {spendable_s:.1f} s)")
-        lines.append(f"    - Step 3 (Plan:  run_hotspot_hw --execute): {'GO' if plan_ok else 'NO-GO'} (cumul {pilot_usage + p1v2_estimate_seconds + total_estimate_seconds:.1f} s <= spendable {spendable_s:.1f} s)")
+    lines.append(f"    - Step 1 (Pilot: measure_p1_v2 --pilot):   {step_status['step1_pilot'][0]} ({step_status['step1_pilot'][1]})")
+    lines.append(f"    - Step 2 (p1v2:  measure_p1_v2 --execute): {step_status['step2_p1v2'][0]} ({step_status['step2_p1v2'][1]})")
+    lines.append(f"    - Step 3 (Plan:  run_hotspot_hw --execute): {step_status['step3_plan'][0]} ({step_status['step3_plan'][1]})")
     lines.append("=" * 80)
     lines.append("")
     lines.append("1. BACKEND & CALIBRATION METADATA")
@@ -922,33 +978,42 @@ def run_hotspot(args):
         lines.append(f"  {msg}")
     lines.append("")
     lines.append("3. PER-REGION LAYOUT & TRANSPILATION TABLE")
-    lines.append("-" * 80)
+    lines.append("-" * 125)
     lines.append(f"  Power Gate Status:        {power_status}")
     lines.append(f"  Primary Cells Count:      {num_primary_cells}")
-    lines.append("-" * 80)
+    lines.append(f"  Countable Cells (N):      {num_countable_cells} (executed primary cells with valid CLEAN2)")
+    lines.append("-" * 125)
     if not regions:
         lines.append("  [NOTE] Zero regions survived layout filtering (all candidate regions dropped).")
     else:
-        hdr = f"{'Region':<7} {'Bench':<7} {'HOT Layout':<18} {'CLN Layout':<18} {'ESP(Hot)':<9} {'ESP(Cln)':<9} {'2Q(H/C)':<9} {'Status':<13} {'Execution':<13}"
+        hdr = f"{'Region':<7} {'Bench':<6} {'HOT Layout':<16} {'CLN Layout':<16} {'CLN2 Layout':<24} {'Ov(C/H)':<8} {'Cands':<6} {'Countable':<10} {'ESP(H/C/C2)':<20} {'Status':<12} {'Exec':<9}"
         lines.append(hdr)
-        lines.append("-" * 115)
+        lines.append("-" * 125)
         for r in regions:
             r_id = r["region_id"]
             for b_name, b_val in r["benchmarks"].items():
                 hot_lay_s = str(b_val["hot_layout"])
                 cln_lay_s = str(b_val["clean_layout"])
-                q2_s = f"{b_val['hot_2q']}/{b_val['clean_2q']} ({b_val['diff_2q']:+d})"
+                cln2_lay_s = str(b_val.get("clean2_layout"))
+                ov_s = f"{b_val.get('clean2_overlap', 0)}/{b_val.get('clean2_overlap_hot', 0)}" if b_val.get("has_clean2") else "-/-"
+                cands_s = str(b_val.get("clean2_cand_count", 0))
+                countable_s = "yes" if b_val.get("is_countable") else "no"
+                h_esp = b_val['hot_esp']
+                c_esp = b_val['clean_esp']
+                c2_esp = b_val.get('clean2_esp', -1.0)
+                esp_s = f"{h_esp:.3f}/{c_esp:.3f}/{c2_esp:.3f}" if c2_esp >= 0 else f"{h_esp:.3f}/{c_esp:.3f}/-"
                 status_s = b_val.get("status", "PRIMARY")
                 exec_s = "EXECUTED" if b_val.get("executed", False) else "NOT EXECUTED"
                 lines.append(
-                    f"R{r_id:<6} {b_name:<7} {hot_lay_s:<18} {cln_lay_s:<18} "
-                    f"{b_val['hot_esp']:<9.4f} {b_val['clean_esp']:<9.4f} "
-                    f"{q2_s:<9} {status_s:<13} {exec_s:<13}"
+                    f"R{r_id:<6} {b_name:<6} {hot_lay_s:<16} {cln_lay_s:<16} {cln2_lay_s:<24} "
+                    f"{ov_s:<8} {cands_s:<6} {countable_s:<10} {esp_s:<20} {status_s:<12} {exec_s:<9}"
                 )
-        lines.append("-" * 115)
+        lines.append("-" * 125)
     lines.append("")
-    lines.append("4. CIRCUIT COUNT & BUDGET SCENARIOS (Checkpoint X / v2.3)")
+    lines.append("4. CIRCUIT COUNT & BUDGET SCENARIOS (Checkpoint Y / v2.4)")
     lines.append("-" * 80)
+    lines.append(f"  Countable Cells (N):           {num_countable_cells}")
+    lines.append(f"  Primary Cells:                 {num_primary_cells}")
     lines.append(f"  Circuit Count Before De-dup:   {count_before}")
     lines.append(f"  Circuit Count After De-dup:    {count_after}")
     lines.append(f"  Estimated Seconds Per Circuit: {est_per_circuit:.3f} s")
@@ -963,17 +1028,9 @@ def run_hotspot(args):
     lines.append(f"  Reserve Buffer Requirement:    {reserve_s:.1f} s")
     lines.append(f"  Spendable Allowance:           {spendable_s:.1f} s (allowance {allowance_remaining:.1f} s - reserve {reserve_s:.1f} s)")
     lines.append("  Priority Step Go/No-Go:")
-    if is_allowance_stale:
-        lines.append("    - Step 1 (Pilot): NO-GO (allowance > 24h old)")
-        lines.append("    - Step 2 (p1v2):  NO-GO (allowance > 24h old)")
-        lines.append("    - Step 3 (Plan):  NO-GO (allowance > 24h old)")
-    else:
-        pilot_ok = (pilot_usage <= spendable_s)
-        p1v2_ok = (pilot_usage + p1v2_estimate_seconds <= spendable_s)
-        plan_ok = (pilot_usage + p1v2_estimate_seconds + total_estimate_seconds <= spendable_s)
-        lines.append(f"    - Step 1 (Pilot): {'GO' if pilot_ok else 'NO-GO'}")
-        lines.append(f"    - Step 2 (p1v2):  {'GO' if p1v2_ok else 'NO-GO'}")
-        lines.append(f"    - Step 3 (Plan):  {'GO' if plan_ok else 'NO-GO'}")
+    lines.append(f"    - Step 1 (Pilot): {step_status['step1_pilot'][0]} ({step_status['step1_pilot'][1]})")
+    lines.append(f"    - Step 2 (p1v2):  {step_status['step2_p1v2'][0]} ({step_status['step2_p1v2'][1]})")
+    lines.append(f"    - Step 3 (Plan):  {step_status['step3_plan'][0]} ({step_status['step3_plan'][1]})")
     lines.append(f"  measure_p1_v2 Dry-Run Estimate:{p1v2_estimate_seconds:.1f} s ({p1v2_num_pubs} PUBs @ {est_per_circuit:.2f} s/PUB)")
     lines.append("")
     lines.append("  BUDGET SCENARIOS:")
@@ -1048,18 +1105,16 @@ def run_hotspot(args):
     # -------------------------------------------------------------------------
     if not args.execute and not args.local:
         print("\n[DRY RUN COMPLETE] Plan and layouts pre-registered.")
-        pilot_approve = math.ceil(pilot_usage)
-        p1v2_approve = math.ceil(p1v2_estimate_seconds)
-        hw_approve = math.ceil(total_estimate_seconds)
         print("\nExact operational command sequence with calculated approval budgets:")
-        print("  # Pre-flight: verify dashboard allowance and update config.yaml if older than 24h")
-        print(f"  python scripts/measure_p1_v2.py --pilot --target live --approve-seconds {pilot_approve}")
-        print(f"  python scripts/measure_p1_v2.py --execute --target live --approve-seconds {p1v2_approve}")
-        print(f"  python scripts/analyze_p1_v2.py")
-        print(f"  # If zero persistent hot qubits, STOP and report non-persistence as the finding.")
-        print(f"  python scripts/run_hotspot_hw.py --dry-run --target live")
-        print(f"  python scripts/run_hotspot_hw.py --execute --target live --approve-seconds {hw_approve}")
-        print(f"  python scripts/analyze_hotspot.py")
+        print("python scripts/measure_p1_v2.py --target live --dry-run")
+        print("python scripts/measure_p1_v2.py --target live --pilot --approve-seconds <printed>")
+        print("python scripts/measure_p1_v2.py --target live --dry-run          (re-print estimate after pilot)")
+        print("python scripts/measure_p1_v2.py --target live --execute --approve-seconds <printed>")
+        print("python scripts/analyze_p1_v2.py")
+        print("(STOP here if zero persistent hot qubits)")
+        print("python scripts/run_hotspot_hw.py --target live --dry-run")
+        print("python scripts/run_hotspot_hw.py --target live --execute --approve-seconds <printed> [--descriptive]")
+        print("python scripts/analyze_hotspot.py")
         return
 
     # -------------------------------------------------------------------------

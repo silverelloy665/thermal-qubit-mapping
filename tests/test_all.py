@@ -500,7 +500,7 @@ def test_hotspot_plan_hash_stability():
         plan = json.load(f)
 
     computed_h = compute_plan_hash(plan)
-    expected_h = "c9d9ce817ad27842" + "5a64895d3ffa4dec" + "9987c7d0a3b99213" + "cb5561ed2faf056a"
+    expected_h = "fe22bb6162857e8e" + "342737d5df874998" + "0fdf8547566ef6ec" + "58b4b8a2a6d0fda7"
     assert computed_h == expected_h
 
 def test_hotspot_synthetic_analysis_known_answer(tmp_path):
@@ -1529,6 +1529,8 @@ def test_measure_p1_v2_pilot_generation_and_24h_refusal(tmp_path):
     from scripts.measure_p1_v2 import run_measure_p1_v2
 
     pilot_file = Path("results/hardware_extra/pilot_scale.json")
+    if pilot_file.exists():
+        pilot_file.unlink()
 
     # 1. Pilot run with local fake backend
     args_pilot = argparse.Namespace(
@@ -1557,10 +1559,8 @@ def test_measure_p1_v2_pilot_generation_and_24h_refusal(tmp_path):
         with pytest.raises(ValueError, match="older than 24 hours"):
             run_measure_p1_v2(args_exec)
     finally:
-        # Restore fresh pilot file
-        pdata["timestamp"] = time.time()
-        with open(pilot_file, "w", encoding="utf-8") as f:
-            json.dump(pdata, f, indent=2)
+        if pilot_file.exists():
+            pilot_file.unlink()
 
 
 def test_run_hotspot_descriptive_gate_and_clean2_selection():
@@ -1589,12 +1589,33 @@ def test_run_hotspot_descriptive_gate_and_clean2_selection():
 
     # 2. Verify refusal when N_primary < 4 and --execute is passed without --descriptive
     if plan.get("primary_cell_count", 0) < 4:
-        args_no_desc = argparse.Namespace(
-            target="fake", dry_run=False, execute=True, pilot=False, approve_seconds=24,
-            local=True, strict_d2=False, descriptive=False
-        )
-        with pytest.raises(ValueError, match="descriptive"):
-            run_hotspot(args_no_desc)
+        pilot_file = Path("results/hardware_extra/pilot_scale.json")
+        cal_ts = plan.get("calibration_timestamp")
+        dummy_pilot = {
+            "timestamp": time.time(),
+            "backend": "fake_marrakesh",
+            "calibration_timestamp": cal_ts,
+            "job_id": "test_pilot_123",
+            "seconds_per_shot": 3.0 / 8192,
+            "qpu_seconds_per_shot": 3.0 / 8192,
+            "pilot_usage": 3.0,
+            "pilot_shots": 8192,
+            "is_local": True,
+            "target": "fake",
+            "source": "run_hotspot_hw --pilot"
+        }
+        pilot_file.write_text(json.dumps(dummy_pilot), encoding="utf-8")
+        try:
+            est_approve = int(round(plan.get("total_estimate_seconds", 36)))
+            args_no_desc = argparse.Namespace(
+                target="fake", dry_run=False, execute=True, pilot=False, approve_seconds=est_approve,
+                local=True, strict_d2=False, descriptive=False
+            )
+            with pytest.raises(ValueError, match="descriptive"):
+                run_hotspot(args_no_desc)
+        finally:
+            if pilot_file.exists():
+                pilot_file.unlink()
 
 
 def test_checkpoint_x_pilot_refusal_gates_measure_p1_v2(monkeypatch):
@@ -1716,8 +1737,9 @@ def test_checkpoint_x_pilot_refusal_gates_run_hotspot(monkeypatch):
         "source": "run_hotspot_hw --pilot"
     }
 
+    est_approve = int(round(pdata.get("total_estimate_seconds", 36)))
     args_exec = argparse.Namespace(
-        target="live", dry_run=False, execute=True, pilot=False, approve_seconds=24,
+        target="live", dry_run=False, execute=True, pilot=False, approve_seconds=est_approve,
         local=False, strict_d2=False, descriptive=True
     )
 
@@ -1827,8 +1849,9 @@ def test_checkpoint_x4_pilot_file_path_sharing_and_origin(monkeypatch):
     }
     pilot_file.write_text(json.dumps(local_pilot), encoding="utf-8")
 
+    est_approve = int(round(plan_dict.get("total_estimate_seconds", 36)))
     args_exec = argparse.Namespace(
-        target="live", dry_run=False, execute=True, pilot=False, approve_seconds=24,
+        target="live", dry_run=False, execute=True, pilot=False, approve_seconds=est_approve,
         local=False, strict_d2=False, descriptive=True
     )
     with pytest.raises(ValueError, match="local job_id|target fake"):
@@ -1852,7 +1875,7 @@ def test_checkpoint_x4_pilot_file_path_sharing_and_origin(monkeypatch):
 
     # In local rehearsal mode with matching plan, this live pilot structure is accepted
     args_rehearsal = argparse.Namespace(
-        target="fake", dry_run=False, execute=True, pilot=False, approve_seconds=24,
+        target="fake", dry_run=False, execute=True, pilot=False, approve_seconds=est_approve,
         local=True, strict_d2=False, descriptive=True
     )
     run_hotspot(args_rehearsal)  # must complete without raising pilot error
@@ -1930,6 +1953,92 @@ def test_checkpoint_x7_analyze_hotspot_synthetic_isolation(tmp_path):
         assert default_csv.stat().st_mtime == mtime_csv_before
     if mtime_txt_before is not None:
         assert default_txt.stat().st_mtime == mtime_txt_before
+
+
+def test_checkpoint_y2_analyze_hotspot_refuses_default_without_raw():
+    """Y2: analyze_hotspot must refuse to write default paths unless real raw files exist in results/hardware_extra/raw/."""
+    from scripts.analyze_hotspot import analyze_hotspot
+    import pytest
+    from pathlib import Path
+
+    # Verify no raw files currently exist
+    raw_dir = Path("results/hardware_extra/raw")
+    if raw_dir.exists():
+        raw_files = list(raw_dir.glob("*.json"))
+        assert len(raw_files) == 0, "No real raw files should exist before live run"
+
+    with pytest.raises(ValueError, match="Refusal: Real raw counts missing in results/hardware_extra/raw"):
+        analyze_hotspot()
+
+
+def test_checkpoint_y4_outcome_classification_exhaustiveness():
+    """Y4(a): Prove exhaustiveness of PREREGISTRATION_v2_4 outcome mapping for every (N, P, I) with N <= 10."""
+    import math
+    from scripts.analyze_hotspot import classify_prereg_v2_4_outcome
+
+    valid_outcomes = {"DESCRIPTIVE", "A. CONFIRMED", "B. NULL / WEAK", "C. INVERTED", "D. MIXED"}
+
+    tested_tuples = 0
+    for N in range(0, 11):
+        for P in range(0, N + 1):
+            for I in range(0, N - P + 1):
+                tested_tuples += 1
+                outcome = classify_prereg_v2_4_outcome(N, P, I)
+                assert outcome in valid_outcomes, f"Invalid outcome {outcome} for N={N}, P={P}, I={I}"
+
+                # Strict rule verification
+                if N < 4:
+                    assert outcome == "DESCRIPTIVE"
+                else:
+                    thresh = math.ceil(N / 2.0)
+                    if I == 0 and P >= thresh:
+                        assert outcome == "A. CONFIRMED"
+                    elif P == 0 and I >= thresh:
+                        assert outcome == "C. INVERTED"
+                    elif P >= 1 and I >= 1:
+                        assert outcome == "D. MIXED"
+                    else:
+                        assert outcome == "B. NULL / WEAK"
+
+    assert tested_tuples == sum((N + 1) * (N + 2) // 2 for N in range(11))
+    assert tested_tuples == 286
+
+
+def test_checkpoint_y6_budget_priority_step_gating():
+    """Y6: Verify priority step gating: stale (>24h) -> all NO-GO; fresh + spendable < step -> NO-GO; otherwise GO."""
+    from scripts.run_hotspot_hw import compute_priority_step_status
+
+    # Case 1: Stale allowance timestamp (>24h old) -> every step NO-GO
+    res_stale = compute_priority_step_status(spendable_s=500.0, is_allowance_stale=True, pilot_est=3.0, p1v2_est=72.0, plan_est=36.0)
+    assert res_stale["step1_pilot"][0] == "NO-GO"
+    assert res_stale["step2_p1v2"][0] == "NO-GO"
+    assert res_stale["step3_plan"][0] == "NO-GO"
+    assert "24h" in res_stale["step1_pilot"][1]
+
+    # Case 2: Fresh timestamp, spendable = 2.0 s (< pilot 3.0 s) -> all NO-GO
+    res_tight = compute_priority_step_status(spendable_s=2.0, is_allowance_stale=False, pilot_est=3.0, p1v2_est=72.0, plan_est=36.0)
+    assert res_tight["step1_pilot"][0] == "NO-GO"
+    assert res_tight["step2_p1v2"][0] == "NO-GO"
+    assert res_tight["step3_plan"][0] == "NO-GO"
+
+    # Case 3: Fresh timestamp, spendable = 10.0 s (pilot 3.0 s <= 10.0 s, but pilot+p1v2 75.0 s > 10.0 s)
+    res_pilot_only = compute_priority_step_status(spendable_s=10.0, is_allowance_stale=False, pilot_est=3.0, p1v2_est=72.0, plan_est=36.0)
+    assert res_pilot_only["step1_pilot"][0] == "GO"
+    assert res_pilot_only["step2_p1v2"][0] == "NO-GO"
+    assert res_pilot_only["step3_plan"][0] == "NO-GO"
+
+    # Case 4: Fresh timestamp, spendable = 80.0 s (pilot+p1v2 75.0 s <= 80.0 s, but pilot+p1v2+plan 111.0 s > 80.0 s)
+    res_p1v2_only = compute_priority_step_status(spendable_s=80.0, is_allowance_stale=False, pilot_est=3.0, p1v2_est=72.0, plan_est=36.0)
+    assert res_p1v2_only["step1_pilot"][0] == "GO"
+    assert res_p1v2_only["step2_p1v2"][0] == "GO"
+    assert res_p1v2_only["step3_plan"][0] == "NO-GO"
+
+    # Case 5: Fresh timestamp, spendable = 129.0 s (pilot+p1v2+plan 111.0 s <= 129.0 s) -> all GO
+    res_all_go = compute_priority_step_status(spendable_s=129.0, is_allowance_stale=False, pilot_est=3.0, p1v2_est=72.0, plan_est=36.0)
+    assert res_all_go["step1_pilot"][0] == "GO"
+    assert res_all_go["step2_p1v2"][0] == "GO"
+    assert res_all_go["step3_plan"][0] == "GO"
+
 
 
 

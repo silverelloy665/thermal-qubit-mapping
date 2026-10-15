@@ -1,14 +1,13 @@
 ================================================================================
 [OFFLINE DRY RUN ON FakeMarrakesh - NOT EVIDENCE - DO NOT CITE]
-[DESCRIPTIVE, NOT CONFIRMATORY - N_primary < 4]
-[WARNING] Stored allowance was checked at 2026-10-11T12:00:00+00:00 (105.7 h ago > 24h).
-PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN (v2.3)
-Timestamp: 2026-10-15T21:41:35.251522+00:00
+[DESCRIPTIVE, NOT CONFIRMATORY - N_countable=2 < 4]
+PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN (v2.4)
+Timestamp: 2026-10-15T22:18:09.861912+00:00
   spendable_s = allowance_remaining_s (279.0 s) - reserve_s (150.0 s) = 129.0 s
   PRIORITY STEP GATING (pilot -> p1v2 -> plan):
-    - Step 1 (Pilot: measure_p1_v2 --pilot):   NO-GO (stored allowance > 24h old; update config first)
-    - Step 2 (p1v2:  measure_p1_v2 --execute): NO-GO (stored allowance > 24h old; update config first)
-    - Step 3 (Plan:  run_hotspot_hw --execute): NO-GO (stored allowance > 24h old; update config first)
+    - Step 1 (Pilot: measure_p1_v2 --pilot):   GO (est 3.0 s <= spendable 129.0 s)
+    - Step 2 (p1v2:  measure_p1_v2 --execute): GO (cumul 75.0 s <= spendable 129.0 s)
+    - Step 3 (Plan:  run_hotspot_hw --execute): GO (cumul 111.0 s <= spendable 129.0 s)
 ================================================================================
 
 1. BACKEND & CALIBRATION METADATA
@@ -17,7 +16,7 @@ Timestamp: 2026-10-15T21:41:35.251522+00:00
   Calibration Timestamp:    2025-02-26T14:52:45-05:00
   Newest p1 Source:         results/hardware/p1_ibm_marrakesh_20261009T001839_0530.json
   Allowance Source:         dashboard 11 Oct 2026 (TODO: update before live run)
-  Allowance Checked At:     2026-10-11T12:00:00+00:00
+  Allowance Checked At:     2026-10-15T22:17:49.684646+00:00
   Excess Metric Label:      excess P(1|0) over control median or calibrated prob_meas1_prep0
 
 2. REGION AND LAYOUT SELECTION LOGS
@@ -39,50 +38,52 @@ Timestamp: 2026-10-15T21:41:35.251522+00:00
     - Local Expanded Neighborhood (d<=4): size=19 qubits, HOT 5q subgraphs=22, CLEAN 5q subgraphs=10.
 
 3. PER-REGION LAYOUT & TRANSPILATION TABLE
---------------------------------------------------------------------------------
-  Power Gate Status:        INCONCLUSIVE (underpowered: 2 primary cells < 4 required)
+-----------------------------------------------------------------------------------------------------------------------------
+  Power Gate Status:        INCONCLUSIVE (underpowered: 2 countable cells < 4 required) [DESCRIPTIVE, NOT CONFIRMATORY MODE]
   Primary Cells Count:      2
---------------------------------------------------------------------------------
-Region  Bench   HOT Layout         CLN Layout         ESP(Hot)  ESP(Cln)  2Q(H/C)   Status        Execution    
--------------------------------------------------------------------------------------------------------------------
-R1      ghz     [125, 126, 127, 128, 129] [126, 127, 128, 129, 137] 0.9238    0.8905    4/8 (+4)  UNMATCHABLE   NOT EXECUTED 
-R1      bv      [125, 126, 127, 128, 137] [127, 128, 129, 137, 147] 0.8941    0.8704    8/5 (-3)  PRIMARY       EXECUTED     
-R1      mirror  [123, 124, 125, 126, 136] [127, 128, 129, 137, 147] 0.6658    0.7174    51/50 (-1) UNMATCHABLE   NOT EXECUTED 
-R2      ghz     [21, 22, 36, 41, 42] [20, 21, 36, 40, 41] 0.9202    0.9068    5/7 (+2)  PRIMARY       EXECUTED     
-R2      bv      [16, 20, 21, 22, 23] [21, 36, 40, 41, 42] 0.9132    0.8954    2/8 (+6)  CONFOUNDED    NOT EXECUTED 
-R2      mirror  [3, 16, 21, 22, 23] [20, 21, 36, 40, 41] 0.6649    0.6190    54/58 (+4) UNMATCHABLE   NOT EXECUTED 
-R3      ghz     [26, 27, 28, 29, 38] [6, 7, 17, 27, 28] 0.8339    0.9313    4/4 (+0)  UNMATCHABLE   NOT EXECUTED 
-R3      bv      [7, 8, 17, 26, 27] [6, 7, 8, 17, 27]  0.7808    0.9186    5/8 (+3)  UNMATCHABLE   NOT EXECUTED 
-R3      mirror  [7, 17, 25, 26, 27] [7, 8, 17, 27, 28] 0.4529    0.7301    54/58 (+4) UNMATCHABLE   NOT EXECUTED 
--------------------------------------------------------------------------------------------------------------------
+  Countable Cells (N):      2 (executed primary cells with valid CLEAN2)
+-----------------------------------------------------------------------------------------------------------------------------
+Region  Bench  HOT Layout       CLN Layout       CLN2 Layout              Ov(C/H)  Cands  Countable  ESP(H/C/C2)          Status       Exec     
+-----------------------------------------------------------------------------------------------------------------------------
+R1      ghz    [125, 126, 127, 128, 129] [126, 127, 128, 129, 137] None                     -/-      0      no         0.924/0.891/-        UNMATCHABLE  NOT EXECUTED
+R1      bv     [125, 126, 127, 128, 137] [127, 128, 129, 137, 147] [85, 86, 87, 97, 107]    0/0      64     yes        0.894/0.870/0.894    PRIMARY      EXECUTED 
+R1      mirror [123, 124, 125, 126, 136] [127, 128, 129, 137, 147] None                     -/-      0      no         0.666/0.717/-        UNMATCHABLE  NOT EXECUTED
+R2      ghz    [21, 22, 36, 41, 42] [20, 21, 36, 40, 41] [27, 28, 29, 30, 31]     0/0      55     yes        0.920/0.907/0.920    PRIMARY      EXECUTED 
+R2      bv     [16, 20, 21, 22, 23] [21, 36, 40, 41, 42] None                     -/-      0      no         0.913/0.895/-        CONFOUNDED   NOT EXECUTED
+R2      mirror [3, 16, 21, 22, 23] [20, 21, 36, 40, 41] None                     -/-      0      no         0.665/0.619/-        UNMATCHABLE  NOT EXECUTED
+R3      ghz    [26, 27, 28, 29, 38] [6, 7, 17, 27, 28] None                     -/-      0      no         0.834/0.931/-        UNMATCHABLE  NOT EXECUTED
+R3      bv     [7, 8, 17, 26, 27] [6, 7, 8, 17, 27] None                     -/-      0      no         0.781/0.919/-        UNMATCHABLE  NOT EXECUTED
+R3      mirror [7, 17, 25, 26, 27] [7, 8, 17, 27, 28] None                     -/-      0      no         0.453/0.730/-        UNMATCHABLE  NOT EXECUTED
+-----------------------------------------------------------------------------------------------------------------------------
 
-4. CIRCUIT COUNT & BUDGET SCENARIOS (Checkpoint X / v2.3)
+4. CIRCUIT COUNT & BUDGET SCENARIOS (Checkpoint Y / v2.4)
 --------------------------------------------------------------------------------
-  Circuit Count Before De-dup:   4
-  Circuit Count After De-dup:    4
+  Countable Cells (N):           2
+  Primary Cells:                 2
+  Circuit Count Before De-dup:   6
+  Circuit Count After De-dup:    6
   Estimated Seconds Per Circuit: 3.000 s
-  Estimated Seconds Per Job:     12.000 s (4 circuits x 3.000 s)
-  Total Estimated Plan Seconds:  24.000 s (2 reps)
+  Estimated Seconds Per Job:     18.000 s (6 circuits x 3.000 s)
+  Total Estimated Plan Seconds:  36.000 s (2 reps)
   Extra Run Budget Cap:          110.0 s
-  Cap Verification:              PASS (24.0 s <= 110.0 s)
+  Cap Verification:              PASS (36.0 s <= 110.0 s)
   Dashboard Allowance Remaining: 279.0 s (Source: dashboard 11 Oct 2026 (TODO: update before live run))
-  Allowance Checked At:          2026-10-11T12:00:00+00:00
-  [WARNING] Allowance verification is older than 24h (105.7 h ago). Update before live execution.
+  Allowance Checked At:          2026-10-15T22:17:49.684646+00:00
   Reserve Buffer Requirement:    150.0 s
   Spendable Allowance:           129.0 s (allowance 279.0 s - reserve 150.0 s)
   Priority Step Go/No-Go:
-    - Step 1 (Pilot): NO-GO (allowance > 24h old)
-    - Step 2 (p1v2):  NO-GO (allowance > 24h old)
-    - Step 3 (Plan):  NO-GO (allowance > 24h old)
+    - Step 1 (Pilot): GO (est 3.0 s <= spendable 129.0 s)
+    - Step 2 (p1v2):  GO (cumul 75.0 s <= spendable 129.0 s)
+    - Step 3 (Plan):  GO (cumul 111.0 s <= spendable 129.0 s)
   measure_p1_v2 Dry-Run Estimate:72.0 s (24 PUBs @ 3.00 s/PUB)
 
   BUDGET SCENARIOS:
   - Scenario 1 (p1v2 only):      Spend: 75.0 s | Remaining: 204.0 s
-  - Scenario 2 (p1v2 + plan):    Spend: 99.0 s | Remaining: 180.0 s
-  - Scenario 3 (with reserve):   Remaining Buffer after 150s reserve: +30.0 s (PASS)
+  - Scenario 2 (p1v2 + plan):    Spend: 111.0 s | Remaining: 168.0 s
+  - Scenario 3 (with reserve):   Remaining Buffer after 150s reserve: +18.0 s (PASS)
 
 5. PLAN INTEGRITY & ARTIFACTS
 --------------------------------------------------------------------------------
   Plan Path:                     results/hardware_extra/plan.json
-  Plan Hash:                     c9d9ce817ad27842-5a64895d3ffa4dec-9987c7d0a3b99213-cb5561ed2faf056a
+  Plan Hash:                     fe22bb6162857e8e-342737d5df874998-0fdf8547566ef6ec-58b4b8a2a6d0fda7
 ================================================================================

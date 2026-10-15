@@ -1,6 +1,6 @@
 # Thermal Qubit Mapping: Noise-Aware Mapping with Excited-State Population ($p_1$)
 
-[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-69%20passed-brightgreen.svg)]()
 [![Backend](https://img.shields.io/badge/IBM%20Quantum-ibm__marrakesh%20(156q)-blue.svg)]()
 [![Architecture](https://img.shields.io/badge/Architecture-Heron%20r2%20(CZ)-purple.svg)]()
 [![Budget](https://img.shields.io/badge/QPU%20Cap-350s%20(250s%20reserve)-orange.svg)]()
@@ -211,14 +211,14 @@ thermal-qubit-mapping/
 │   ├── figures/                   # High-res slide charts and circuit diagrams
 │   └── hardware/                  # Raw counts, runtime_table.csv, plan, and provenance sidecars
 └── tests/
-    └── test_all.py                # 44 rigorous pytest unit tests
+    └── test_all.py                # 69 rigorous pytest unit tests
 ```
 
 ---
 
 ## 8. Reproducibility & Commands
 
-### 1. Run Unit Tests (44 Tests)
+### 1. Run Unit Tests (69 Tests)
 ```bash
 pytest -v tests/test_all.py
 ```
