@@ -31,7 +31,7 @@
   "p1v2_estimate_seconds": 72.0,
   "allowance_remaining_s": 279.0,
   "allowance_source": "dashboard 11 Oct 2026 (TODO: update before live run)",
-  "allowance_checked_at": "2020-01-01T00:00:00+00:00",
+  "allowance_checked_at": "2026-10-11T12:00:00+00:00",
   "reserve_s": 150.0,
   "extra_run_cap_s": 110.0,
   "remaining_after_run_s": 168.0,

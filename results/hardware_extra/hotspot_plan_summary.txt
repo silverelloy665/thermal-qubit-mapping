@@ -1,13 +1,14 @@
 ================================================================================
 [OFFLINE DRY RUN ON FakeMarrakesh - NOT EVIDENCE - DO NOT CITE]
 [DESCRIPTIVE, NOT CONFIRMATORY - N_countable=2 < 4]
+[WARNING] Stored allowance was checked at 2026-10-11T12:00:00+00:00 (106.3 h ago > 24h).
 PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN (v2.4)
-Timestamp: 2026-10-15T22:18:09.861912+00:00
+Timestamp: 2026-10-15T22:20:48.956066+00:00
   spendable_s = allowance_remaining_s (279.0 s) - reserve_s (150.0 s) = 129.0 s
   PRIORITY STEP GATING (pilot -> p1v2 -> plan):
-    - Step 1 (Pilot: measure_p1_v2 --pilot):   GO (est 3.0 s <= spendable 129.0 s)
-    - Step 2 (p1v2:  measure_p1_v2 --execute): GO (cumul 75.0 s <= spendable 129.0 s)
-    - Step 3 (Plan:  run_hotspot_hw --execute): GO (cumul 111.0 s <= spendable 129.0 s)
+    - Step 1 (Pilot: measure_p1_v2 --pilot):   NO-GO (stored allowance > 24h old; update config first)
+    - Step 2 (p1v2:  measure_p1_v2 --execute): NO-GO (stored allowance > 24h old; update config first)
+    - Step 3 (Plan:  run_hotspot_hw --execute): NO-GO (stored allowance > 24h old; update config first)
 ================================================================================
 
 1. BACKEND & CALIBRATION METADATA
@@ -16,7 +17,7 @@ Timestamp: 2026-10-15T22:18:09.861912+00:00
   Calibration Timestamp:    2025-02-26T14:52:45-05:00
   Newest p1 Source:         results/hardware/p1_ibm_marrakesh_20261009T001839_0530.json
   Allowance Source:         dashboard 11 Oct 2026 (TODO: update before live run)
-  Allowance Checked At:     2026-10-15T22:17:49.684646+00:00
+  Allowance Checked At:     2026-10-11T12:00:00+00:00
   Excess Metric Label:      excess P(1|0) over control median or calibrated prob_meas1_prep0
 
 2. REGION AND LAYOUT SELECTION LOGS
@@ -39,7 +40,7 @@ Timestamp: 2026-10-15T22:18:09.861912+00:00
 
 3. PER-REGION LAYOUT & TRANSPILATION TABLE
 -----------------------------------------------------------------------------------------------------------------------------
-  Power Gate Status:        INCONCLUSIVE (underpowered: 2 countable cells < 4 required) [DESCRIPTIVE, NOT CONFIRMATORY MODE]
+  Power Gate Status:        INCONCLUSIVE (underpowered: 2 countable cells < 4 required)
   Primary Cells Count:      2
   Countable Cells (N):      2 (executed primary cells with valid CLEAN2)
 -----------------------------------------------------------------------------------------------------------------------------
@@ -68,13 +69,14 @@ R3      mirror [7, 17, 25, 26, 27] [7, 8, 17, 27, 28] None                     -
   Extra Run Budget Cap:          110.0 s
   Cap Verification:              PASS (36.0 s <= 110.0 s)
   Dashboard Allowance Remaining: 279.0 s (Source: dashboard 11 Oct 2026 (TODO: update before live run))
-  Allowance Checked At:          2026-10-15T22:17:49.684646+00:00
+  Allowance Checked At:          2026-10-11T12:00:00+00:00
+  [WARNING] Allowance verification is older than 24h (106.3 h ago). Update before live execution.
   Reserve Buffer Requirement:    150.0 s
   Spendable Allowance:           129.0 s (allowance 279.0 s - reserve 150.0 s)
   Priority Step Go/No-Go:
-    - Step 1 (Pilot): GO (est 3.0 s <= spendable 129.0 s)
-    - Step 2 (p1v2):  GO (cumul 75.0 s <= spendable 129.0 s)
-    - Step 3 (Plan):  GO (cumul 111.0 s <= spendable 129.0 s)
+    - Step 1 (Pilot): NO-GO (stored allowance > 24h old; update config first)
+    - Step 2 (p1v2):  NO-GO (stored allowance > 24h old; update config first)
+    - Step 3 (Plan):  NO-GO (stored allowance > 24h old; update config first)
   measure_p1_v2 Dry-Run Estimate:72.0 s (24 PUBs @ 3.00 s/PUB)
 
   BUDGET SCENARIOS:
