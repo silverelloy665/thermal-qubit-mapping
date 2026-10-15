@@ -318,16 +318,25 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
                 conf_reason = "Matched (|Delta 2Q| <= 4, ESP <= HOT and within 0.03)"
                 is_executed = True
 
-                # Checkpoint W (W4(e)): CLEAN2 negative control layout matched to CLEAN_matched
-                clean2_cands = [c for c in matched[1:] if c["layout"] != chosen["layout"]]
+                # Checkpoint X (X5): CLEAN2 must share <= 2 qubits with CLEAN_matched (pick lowest overlap; if none, no CLEAN2)
+                chosen_set = set(chosen["layout"])
+                clean2_cands = []
+                for c in matched[1:]:
+                    if c["layout"] != chosen["layout"]:
+                        ov = len(chosen_set.intersection(set(c["layout"])))
+                        if ov <= 2:
+                            clean2_cands.append((ov, c))
+
                 if clean2_cands:
-                    chosen_clean2 = clean2_cands[0]
+                    clean2_cands.sort(key=lambda item: (item[0], -item[1]["esp"]))
+                    lowest_ov, chosen_clean2 = clean2_cands[0]
                     has_clean2 = True
                     clean2_lay = chosen_clean2["layout"]
                     clean2_tc = chosen_clean2["transpiled"]
                     clean2_esp = chosen_clean2["esp"]
                     clean2_2q = chosen_clean2["clean_2q"]
                     clean2_depth = chosen_clean2["depth"]
+                    clean2_overlap = lowest_ov
                 else:
                     has_clean2 = False
                     clean2_lay = None
@@ -335,6 +344,7 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
                     clean2_esp = -1.0
                     clean2_2q = 0
                     clean2_depth = 0
+                    clean2_overlap = None
             else:
                 has_clean2 = False
                 clean2_lay = None
@@ -342,6 +352,7 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
                 clean2_esp = -1.0
                 clean2_2q = 0
                 clean2_depth = 0
+                clean2_overlap = None
                 is_executed = False
                 non_conf_candidates = [c for c in clean_candidates if abs(c["diff_2q"]) <= 4]
                 if non_conf_candidates:
@@ -383,6 +394,7 @@ def select_hotspot_regions_and_layouts(backend, p1_data, config, strict_d2=False
                 "has_clean2": has_clean2,
                 "clean2_layout": clean2_lay,
                 "clean2_esp": clean2_esp,
+                "clean2_overlap": clean2_overlap,
                 "clean2_2q": clean2_2q,
                 "clean2_depth": clean2_depth,
                 "clean2_transpiled": clean2_tc,
@@ -455,6 +467,14 @@ def run_hotspot(args):
     expected_backend = config.get("extra_backend", "ibm_marrakesh")
     persistent_hot_qubits = None
 
+    # X3: run_hotspot_hw without --target live must never touch a live backend.
+    # --execute without --target live must refuse or run offline only and say so.
+    if getattr(args, "execute", False) and target_mode != "live" and not getattr(args, "local", False):
+        raise ValueError("Refusal: --execute requires --target live for QPU execution. To run an offline rehearsal, pass --local explicitly.")
+
+    if getattr(args, "local", False):
+        print("  [OFFLINE LOCAL REHEARSAL ONLY - NOT SUBMITTED TO QPU HARDWARE]")
+
     backend = get_hotspot_backend(config, local=args.local, target=target_mode)
     backend_name = backend.name
     cal_timestamp = get_calibration_timestamp(backend)
@@ -489,6 +509,93 @@ def run_hotspot(args):
         else:
             if is_allowance_stale:
                 print(f"  [WARNING] Stored allowance was checked at {checked_at_str} ({allowance_age_sec/3600:.1f} h ago > 24h).")
+
+    # Step 1.7: Fast early refusal gates for --execute mode
+    pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
+    plan_path = Path("results/hardware_extra/plan.json")
+
+    if args.execute:
+        # 1. Pilot file existence and validation
+        if not pilot_scale_path.exists():
+            raise ValueError(f"Refusal: Pilot file '{pilot_scale_path}' missing. Run --pilot first.")
+        with open(pilot_scale_path, "r", encoding="utf-8") as f:
+            pilot_data = json.load(f)
+
+        # 2. Plan file existence (needed for plan created_timestamp comparison)
+        if not plan_path.exists():
+            raise ValueError(f"Refusal: Plan file '{plan_path}' missing. Run dry run first.")
+        with open(plan_path, "r", encoding="utf-8") as f:
+            saved_plan = json.load(f)
+
+        # X1 Live --execute pilot refusal gates:
+        if target_mode == "live" and not getattr(args, "local", False):
+            # 1. job_id starting "pilot_local"
+            job_id_str = str(pilot_data.get("job_id", "")).strip()
+            if job_id_str.startswith("pilot_local"):
+                raise ValueError(f"Refusal: Pilot file contains local job_id '{job_id_str}'. Real QPU pilot run required.")
+            # 2. written under --local or --target fake
+            if pilot_data.get("is_local", False) or pilot_data.get("target") in ["fake", "local"] or "fake" in str(pilot_data.get("backend", "")).lower() or "local" in str(pilot_data.get("source", "")).lower():
+                raise ValueError(f"Refusal: Pilot file was generated under --local or --target fake. Real QPU pilot run required.")
+            # 3. names a backend different from config backend
+            pilot_backend = pilot_data.get("backend")
+            if pilot_backend != expected_backend:
+                raise ValueError(f"Refusal: Pilot file backend '{pilot_backend}' does not match config extra_backend '{expected_backend}'.")
+            # 4. lacks a calibration timestamp
+            if not pilot_data.get("calibration_timestamp") or not str(pilot_data.get("calibration_timestamp")).strip():
+                raise ValueError("Refusal: Pilot file lacks calibration timestamp.")
+            # 5. older than 24 h
+            pilot_ts = float(pilot_data.get("timestamp", 0.0))
+            if abs(time.time() - pilot_ts) > 86400:
+                raise ValueError(f"Refusal: Pilot scale file is older than 24 hours. Re-run --pilot.")
+            # Calibration match check
+            if pilot_data.get("calibration_timestamp") != cal_timestamp:
+                raise ValueError(f"Refusal: Pilot calibration timestamp does not match target calibration timestamp. Run --pilot on fresh calibration.")
+        else:
+            # Local / offline execute
+            pilot_backend = pilot_data.get("backend")
+            if not pilot_backend:
+                raise ValueError("Refusal: Pilot file missing 'backend'.")
+            if pilot_backend != backend_name and pilot_backend != expected_backend:
+                raise ValueError(f"Refusal: Pilot backend '{pilot_backend}' does not match target backend '{backend_name}'.")
+            if not pilot_data.get("job_id") or not str(pilot_data.get("job_id")).strip():
+                raise ValueError("Refusal: Pilot file missing job_id. Real QPU pilot run required.")
+            pilot_ts = float(pilot_data.get("timestamp", 0.0))
+            cal_dt = parse_iso_ts(cal_timestamp)
+            cal_epoch = cal_dt.timestamp()
+            if pilot_ts <= cal_epoch:
+                raise ValueError(
+                    f"Refusal: Pilot timestamp ({pilot_ts}) is older than or equal to backend calibration timestamp ({cal_epoch} / {cal_timestamp}). Run --pilot after backend calibration."
+                )
+            if abs(time.time() - pilot_ts) > 86400:
+                raise ValueError(f"Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
+
+        # 3. Calibration timestamp unchanged
+        if cal_timestamp != saved_plan.get("calibration_timestamp"):
+            raise ValueError(
+                f"Refusal: Calibration timestamp changed since planning "
+                f"({cal_timestamp} != {saved_plan.get('calibration_timestamp')}). Re-run dry run."
+            )
+
+        # 4. Approval seconds exact match
+        required_approve = math.ceil(float(saved_plan.get("total_estimate_seconds", 108.0)))
+        if args.approve_seconds is None:
+            raise ValueError(f"Refusal: Must provide --approve-seconds {required_approve}.")
+        if int(args.approve_seconds) != required_approve:
+            raise ValueError(
+                f"Refusal: --approve-seconds {args.approve_seconds} does not match required {required_approve}."
+            )
+
+        # 5. Allowance reserve buffer check
+        pilot_used_time = float(pilot_data.get("pilot_usage", 4.0))
+        p1v2_num_pubs = 24 if target.num_qubits >= 127 else 20
+        scale = get_scale_estimate()
+        p1_est_time = p1v2_num_pubs * (scale * shots)
+        projected_spend = pilot_used_time + p1_est_time + float(saved_plan.get("total_estimate_seconds", 108.0))
+        if allowance_remaining - projected_spend < reserve_s:
+            raise ValueError(
+                f"Refusal: Insufficient allowance. Remaining ({allowance_remaining:.1f} s) - "
+                f"projected spend ({projected_spend:.1f} s) < reserve ({reserve_s:.1f} s)."
+            )
 
     # Step 2: p1 data loading and validation
     if target_mode == "live":
@@ -558,80 +665,6 @@ def run_hotspot(args):
         if cal_date != today_local and cal_date != today_utc:
             raise ValueError(
                 f"Refusal: Backend calibration date ({cal_date}) is not today's date ({today_local}). Live run requires today's calibration."
-            )
-
-    pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
-    plan_path = Path("results/hardware_extra/plan.json")
-
-    # Fast early refusal gates for --execute mode
-    if args.execute:
-        # 1. Pilot file existence and validation
-        if not pilot_scale_path.exists():
-            raise ValueError(f"Refusal: Pilot file '{pilot_scale_path}' missing. Run --pilot first.")
-        with open(pilot_scale_path, "r", encoding="utf-8") as f:
-            pilot_data = json.load(f)
-
-        # 2. Plan file existence (needed for plan created_timestamp comparison)
-        if not plan_path.exists():
-            raise ValueError(f"Refusal: Plan file '{plan_path}' missing. Run dry run first.")
-        with open(plan_path, "r", encoding="utf-8") as f:
-            saved_plan = json.load(f)
-
-        # Pilot Gate: same backend as extra_backend, non-empty job_id, within 24 h, timestamp after backend calibration
-        pilot_backend = pilot_data.get("backend")
-        if not pilot_backend:
-            raise ValueError("Refusal: Pilot file missing 'backend'.")
-        if not args.local:
-            if pilot_backend != expected_backend:
-                raise ValueError(
-                    f"Refusal: Pilot backend '{pilot_backend}' does not match extra_backend '{expected_backend}'."
-                )
-        else:
-            if pilot_backend != backend_name and pilot_backend != expected_backend:
-                raise ValueError(
-                    f"Refusal: Pilot backend '{pilot_backend}' does not match target backend '{backend_name}'."
-                )
-
-        if not pilot_data.get("job_id") or not str(pilot_data.get("job_id")).strip():
-            raise ValueError("Refusal: Pilot file missing job_id. Real QPU pilot run required.")
-
-        pilot_ts = float(pilot_data.get("timestamp", 0.0))
-        cal_dt = parse_iso_ts(cal_timestamp)
-        cal_epoch = cal_dt.timestamp()
-        if pilot_ts <= cal_epoch:
-            raise ValueError(
-                f"Refusal: Pilot timestamp ({pilot_ts}) is older than or equal to backend calibration timestamp ({cal_epoch} / {cal_timestamp}). Run --pilot after backend calibration."
-            )
-
-        if abs(time.time() - pilot_ts) > 86400:
-            raise ValueError(f"Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
-
-        # 3. Calibration timestamp unchanged
-        if cal_timestamp != saved_plan.get("calibration_timestamp"):
-            raise ValueError(
-                f"Refusal: Calibration timestamp changed since planning "
-                f"({cal_timestamp} != {saved_plan.get('calibration_timestamp')}). Re-run dry run."
-            )
-
-        # 4. Approval seconds exact match
-        required_approve = math.ceil(float(saved_plan.get("total_estimate_seconds", 108.0)))
-        if args.approve_seconds is None:
-            raise ValueError(f"Refusal: Must provide --approve-seconds {required_approve}.")
-        if int(args.approve_seconds) != required_approve:
-            raise ValueError(
-                f"Refusal: --approve-seconds {args.approve_seconds} does not match required {required_approve}."
-            )
-
-        # 5. Allowance reserve buffer check
-        pilot_used_time = float(pilot_data.get("pilot_usage", 4.0))
-        p1v2_num_pubs = 24 if target.num_qubits >= 127 else 20
-        scale = get_scale_estimate()
-        p1_est_time = p1v2_num_pubs * (scale * shots)
-        projected_spend = pilot_used_time + p1_est_time + float(saved_plan.get("total_estimate_seconds", 108.0))
-        if allowance_remaining - projected_spend < reserve_s:
-            raise ValueError(
-                f"Refusal: Insufficient allowance. Remaining ({allowance_remaining:.1f} s) - "
-                f"projected spend ({projected_spend:.1f} s) < reserve ({reserve_s:.1f} s)."
             )
 
     # Layout Selection
@@ -704,23 +737,34 @@ def run_hotspot(args):
     count_after = len(unique_circuits)
 
     # Scale and time estimation
+    # X1: Budget scenarios must NOT use a local pilot's scale (use default 3.0 s/PUB until a live pilot exists)
     pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
+    valid_live_pilot = False
     if pilot_scale_path.exists():
-        with open(pilot_scale_path, "r", encoding="utf-8") as f:
-            ps_data = json.load(f)
-        scale_per_shot = ps_data.get("qpu_seconds_per_shot", 3.0 / shots)
-        pilot_usage = ps_data.get("pilot_usage", 4.0)
-    else:
-        # Check standard pilot scale
-        std_scale = Path("results/hardware/qpu_scale.json")
-        if std_scale.exists():
-            with open(std_scale, "r", encoding="utf-8") as f:
+        try:
+            with open(pilot_scale_path, "r", encoding="utf-8") as f:
                 ps_data = json.load(f)
-            scale_per_shot = ps_data.get("qpu_seconds_per_shot", 3.0 / shots)
-            pilot_usage = ps_data.get("pilot_usage", 4.0)
-        else:
-            scale_per_shot = 3.0 / shots
-            pilot_usage = 4.0
+            j_id = str(ps_data.get("job_id", "")).strip()
+            is_loc = ps_data.get("is_local", False) or ps_data.get("target") in ["fake", "local"]
+            b_name = ps_data.get("backend", "")
+            cal_ts = ps_data.get("calibration_timestamp")
+            age_s = abs(time.time() - float(ps_data.get("timestamp", 0.0)))
+            if (
+                not j_id.startswith("pilot_local")
+                and not is_loc
+                and b_name == expected_backend
+                and cal_ts
+                and age_s <= 86400
+            ):
+                valid_live_pilot = True
+                scale_per_shot = ps_data.get("qpu_seconds_per_shot", ps_data.get("seconds_per_shot", 3.0 / shots))
+                pilot_usage = float(ps_data.get("pilot_usage", 3.0))
+        except Exception:
+            valid_live_pilot = False
+
+    if not valid_live_pilot:
+        scale_per_shot = 3.0 / shots
+        pilot_usage = 3.0
 
     est_per_circuit = shots * scale_per_shot
     est_per_job = count_after * est_per_circuit
@@ -837,6 +881,7 @@ def run_hotspot(args):
         write_confounding_table(plan_dict)
 
     # Generate printable summary report
+    spendable_s = allowance_remaining - reserve_s
     lines = []
     lines.append("=" * 80)
     if target_mode != "live":
@@ -845,8 +890,21 @@ def run_hotspot(args):
         lines.append("[DESCRIPTIVE, NOT CONFIRMATORY - N_primary < 4]")
     if is_allowance_stale:
         lines.append(f"[WARNING] Stored allowance was checked at {checked_at_str} ({allowance_age_sec/3600:.1f} h ago > 24h).")
-    lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN (v2.2)")
+    lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: DRY RUN & EXECUTION PLAN (v2.3)")
     lines.append(f"Timestamp: {datetime.datetime.now(datetime.timezone.utc).isoformat()}")
+    lines.append(f"  spendable_s = allowance_remaining_s ({allowance_remaining:.1f} s) - reserve_s ({reserve_s:.1f} s) = {spendable_s:.1f} s")
+    lines.append("  PRIORITY STEP GATING (pilot -> p1v2 -> plan):")
+    if is_allowance_stale:
+        lines.append("    - Step 1 (Pilot: measure_p1_v2 --pilot):   NO-GO (stored allowance > 24h old; update config first)")
+        lines.append("    - Step 2 (p1v2:  measure_p1_v2 --execute): NO-GO (stored allowance > 24h old; update config first)")
+        lines.append("    - Step 3 (Plan:  run_hotspot_hw --execute): NO-GO (stored allowance > 24h old; update config first)")
+    else:
+        pilot_ok = (pilot_usage <= spendable_s)
+        p1v2_ok = (pilot_usage + p1v2_estimate_seconds <= spendable_s)
+        plan_ok = (pilot_usage + p1v2_estimate_seconds + total_estimate_seconds <= spendable_s)
+        lines.append(f"    - Step 1 (Pilot: measure_p1_v2 --pilot):   {'GO' if pilot_ok else 'NO-GO'} (est {pilot_usage:.1f} s <= spendable {spendable_s:.1f} s)")
+        lines.append(f"    - Step 2 (p1v2:  measure_p1_v2 --execute): {'GO' if p1v2_ok else 'NO-GO'} (cumul {pilot_usage + p1v2_estimate_seconds:.1f} s <= spendable {spendable_s:.1f} s)")
+        lines.append(f"    - Step 3 (Plan:  run_hotspot_hw --execute): {'GO' if plan_ok else 'NO-GO'} (cumul {pilot_usage + p1v2_estimate_seconds + total_estimate_seconds:.1f} s <= spendable {spendable_s:.1f} s)")
     lines.append("=" * 80)
     lines.append("")
     lines.append("1. BACKEND & CALIBRATION METADATA")
@@ -889,7 +947,7 @@ def run_hotspot(args):
                 )
         lines.append("-" * 115)
     lines.append("")
-    lines.append("4. CIRCUIT COUNT & BUDGET SCENARIOS (Checkpoint W / v2.2)")
+    lines.append("4. CIRCUIT COUNT & BUDGET SCENARIOS (Checkpoint X / v2.3)")
     lines.append("-" * 80)
     lines.append(f"  Circuit Count Before De-dup:   {count_before}")
     lines.append(f"  Circuit Count After De-dup:    {count_after}")
@@ -903,6 +961,19 @@ def run_hotspot(args):
     if is_allowance_stale:
         lines.append(f"  [WARNING] Allowance verification is older than 24h ({allowance_age_sec/3600:.1f} h ago). Update before live execution.")
     lines.append(f"  Reserve Buffer Requirement:    {reserve_s:.1f} s")
+    lines.append(f"  Spendable Allowance:           {spendable_s:.1f} s (allowance {allowance_remaining:.1f} s - reserve {reserve_s:.1f} s)")
+    lines.append("  Priority Step Go/No-Go:")
+    if is_allowance_stale:
+        lines.append("    - Step 1 (Pilot): NO-GO (allowance > 24h old)")
+        lines.append("    - Step 2 (p1v2):  NO-GO (allowance > 24h old)")
+        lines.append("    - Step 3 (Plan):  NO-GO (allowance > 24h old)")
+    else:
+        pilot_ok = (pilot_usage <= spendable_s)
+        p1v2_ok = (pilot_usage + p1v2_estimate_seconds <= spendable_s)
+        plan_ok = (pilot_usage + p1v2_estimate_seconds + total_estimate_seconds <= spendable_s)
+        lines.append(f"    - Step 1 (Pilot): {'GO' if pilot_ok else 'NO-GO'}")
+        lines.append(f"    - Step 2 (p1v2):  {'GO' if p1v2_ok else 'NO-GO'}")
+        lines.append(f"    - Step 3 (Plan):  {'GO' if plan_ok else 'NO-GO'}")
     lines.append(f"  measure_p1_v2 Dry-Run Estimate:{p1v2_estimate_seconds:.1f} s ({p1v2_num_pubs} PUBs @ {est_per_circuit:.2f} s/PUB)")
     lines.append("")
     lines.append("  BUDGET SCENARIOS:")
@@ -933,7 +1004,7 @@ def run_hotspot(args):
         print("\n[PILOT MODE] Running ONE circuit to establish empirical shot scaling...")
         pilot_circuit = unique_circuits[0]
 
-        if not args.local:
+        if not args.local and target_mode == "live":
             service = get_ibm_service()
             sampler = Sampler(mode=backend)
             sampler.options.dynamical_decoupling.enable = False
@@ -943,20 +1014,29 @@ def run_hotspot(args):
             print(f"Pilot Job ID: {j_id}")
             job.result()
             usage = extract_qpu_seconds(job, 3.0)
+            is_loc = False
+            origin_target = "live"
         else:
             print("[PILOT LOCAL REHEARSAL] Simulating pilot run on local backend.")
             j_id = f"pilot_local_{int(time.time())}"
             usage = 3.0
+            is_loc = True
+            origin_target = "fake" if target_mode != "live" else "local"
 
         pilot_scale_data = {
             "backend": backend_name,
             "job_id": j_id,
             "timestamp": time.time(),
             "iso_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "calibration_timestamp": cal_timestamp,
             "qpu_seconds_per_shot": usage / shots,
+            "seconds_per_shot": usage / shots,
             "pilot_usage": usage,
             "pilot_shots": shots,
-            "circuit_hash": hash_circuit(pilot_circuit)
+            "circuit_hash": hash_circuit(pilot_circuit),
+            "source": "run_hotspot_hw --pilot",
+            "is_local": is_loc,
+            "target": origin_target,
         }
         with open(pilot_scale_path, "w", encoding="utf-8") as f:
             json.dump(pilot_scale_data, f, indent=2)
@@ -968,15 +1048,17 @@ def run_hotspot(args):
     # -------------------------------------------------------------------------
     if not args.execute and not args.local:
         print("\n[DRY RUN COMPLETE] Plan and layouts pre-registered.")
-        p1_approve = math.ceil(4096 * 2 * scale_per_shot)
+        pilot_approve = math.ceil(pilot_usage)
         p1v2_approve = math.ceil(p1v2_estimate_seconds)
         hw_approve = math.ceil(total_estimate_seconds)
         print("\nExact operational command sequence with calculated approval budgets:")
-        print(f"  python scripts/measure_p1_v2.py --execute --approve-seconds <N>")
+        print("  # Pre-flight: verify dashboard allowance and update config.yaml if older than 24h")
+        print(f"  python scripts/measure_p1_v2.py --pilot --target live --approve-seconds {pilot_approve}")
+        print(f"  python scripts/measure_p1_v2.py --execute --target live --approve-seconds {p1v2_approve}")
         print(f"  python scripts/analyze_p1_v2.py")
         print(f"  # If zero persistent hot qubits, STOP and report non-persistence as the finding.")
-        print(f"  python scripts/run_hotspot_hw.py --target live --dry-run")
-        print(f"  python scripts/run_hotspot_hw.py --target live --execute --approve-seconds <M>")
+        print(f"  python scripts/run_hotspot_hw.py --dry-run --target live")
+        print(f"  python scripts/run_hotspot_hw.py --execute --target live --approve-seconds {hw_approve}")
         print(f"  python scripts/analyze_hotspot.py")
         return
 
@@ -986,14 +1068,42 @@ def run_hotspot(args):
     if args.execute:
         print("\n[EXECUTE MODE GATED CHECKS]")
 
-        # 1. Pilot file existence and 24h validity
+        # 1. Pilot file existence and 24h validity + live pilot refusal gates
         if not pilot_scale_path.exists():
             raise ValueError(f"Refusal: Pilot file '{pilot_scale_path}' missing. Run --pilot first.")
         with open(pilot_scale_path, "r", encoding="utf-8") as f:
             pilot_data = json.load(f)
-        if time.time() - pilot_data.get("timestamp", 0) > 86400:
-            raise ValueError(f"Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
-        print("  [PASS] Pilot scale file verified (< 24h old).")
+
+        if target_mode == "live" and not getattr(args, "local", False):
+            # 1. job_id starting 'pilot_local'
+            j_id = str(pilot_data.get("job_id", "")).strip()
+            if j_id.startswith("pilot_local"):
+                raise ValueError("Refusal: Pilot file contains local job_id ('pilot_local*'). Live execution requires a live QPU pilot.")
+            # 2. was written under --local or --target fake
+            if pilot_data.get("is_local", False) or pilot_data.get("target") in ["fake", "local"]:
+                raise ValueError("Refusal: Pilot file was generated under --local or --target fake. Live execution requires a live pilot.")
+            # 3. names a backend different from config backend
+            if pilot_data.get("backend") != expected_backend:
+                raise ValueError(f"Refusal: Pilot backend '{pilot_data.get('backend')}' does not match config extra_backend '{expected_backend}'.")
+            # 4. lacks a calibration timestamp
+            if not pilot_data.get("calibration_timestamp") or not str(pilot_data.get("calibration_timestamp")).strip():
+                raise ValueError("Refusal: Pilot file lacks calibration timestamp. Fresh calibration-linked pilot required.")
+            # 5. older than 24 h
+            pilot_ts = float(pilot_data.get("timestamp", 0.0))
+            if abs(time.time() - pilot_ts) > 86400:
+                raise ValueError("Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
+            # Calibration match check
+            if pilot_data.get("calibration_timestamp") != cal_timestamp:
+                raise ValueError("Refusal: Pilot calibration timestamp does not match target calibration timestamp. Run --pilot on fresh calibration.")
+        else:
+            # Local / offline execute
+            pilot_ts = float(pilot_data.get("timestamp", 0.0))
+            if abs(time.time() - pilot_ts) > 86400:
+                raise ValueError("Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
+            if pilot_data.get("backend") != backend.name and pilot_data.get("backend") != expected_backend:
+                raise ValueError(f"Refusal: Pilot backend '{pilot_data.get('backend')}' does not match target backend '{backend.name}'.")
+
+        print("  [PASS] Pilot scale file verified with all safety refusal gates passed.")
 
         # 2. Plan file existence and hash integrity
         if not plan_path.exists():

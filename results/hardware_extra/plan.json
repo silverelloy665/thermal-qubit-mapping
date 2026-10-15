@@ -17,34 +17,33 @@
   "circuit_hashes": [
     "dd0c1b19fc0ffd2f-c0655dad1dd9f2b3-75defc324107c39e-fb0dd7d450561f28",
     "f1f5f90ecb9d686d-c0be4c4e4948a626-90a8d582dd4fbad1-21e6c75f13f29664",
-    "1f0efdc66888e1f3-b263c69c86386825-b79b27b7f9998429-6e157d372702acab",
     "865bb1f4f2e4395a-30a346ea3afe9afd-019686a013a7029f-78a6905f915b7088",
     "33773d4e1d524cb9-679849d73a7f1d6c-e509e03154ab79bb-42502b1bf1aa29cc"
   ],
-  "circuit_count_before": 5,
-  "circuit_count_after": 5,
+  "circuit_count_before": 4,
+  "circuit_count_after": 4,
   "per_circuit_estimate_seconds": 3.0,
-  "per_job_estimate_seconds": 15.0,
-  "total_estimate_seconds": 30.0,
+  "per_job_estimate_seconds": 12.0,
+  "total_estimate_seconds": 24.0,
   "p1v2_estimate_seconds": 72.0,
   "allowance_remaining_s": 279.0,
   "allowance_source": "dashboard 11 Oct 2026 (TODO: update before live run)",
   "allowance_checked_at": "2026-10-11T12:00:00+00:00",
   "reserve_s": 150.0,
   "extra_run_cap_s": 110.0,
-  "remaining_after_run_s": 175.5,
+  "remaining_after_run_s": 180.0,
   "budget_scenarios": {
     "scenario1_p1v2_only": {
-      "spend": 73.5,
-      "remaining": 205.5
+      "spend": 75.0,
+      "remaining": 204.0
     },
     "scenario2_p1v2_plus_plan": {
-      "spend": 103.5,
-      "remaining": 175.5
+      "spend": 99.0,
+      "remaining": 180.0
     },
     "scenario3_with_reserve": {
-      "spend": 103.5,
-      "remaining_buffer": 25.5,
+      "spend": 99.0,
+      "remaining_buffer": 30.0,
       "reserve_s": 150.0
     }
   },
@@ -101,6 +100,7 @@
           "has_clean2": false,
           "clean2_layout": null,
           "clean2_esp": -1.0,
+          "clean2_overlap": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -140,17 +140,12 @@
             137,
             147
           ],
-          "has_clean2": true,
-          "clean2_layout": [
-            126,
-            127,
-            128,
-            137,
-            147
-          ],
-          "clean2_esp": 0.866099106675298,
-          "clean2_2q": 8,
-          "clean2_depth": 20,
+          "has_clean2": false,
+          "clean2_layout": null,
+          "clean2_esp": -1.0,
+          "clean2_overlap": null,
+          "clean2_2q": 0,
+          "clean2_depth": 0,
           "thermal_esp_layout": [
             126,
             127,
@@ -191,6 +186,7 @@
           "has_clean2": false,
           "clean2_layout": null,
           "clean2_esp": -1.0,
+          "clean2_overlap": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -261,6 +257,7 @@
           "has_clean2": false,
           "clean2_layout": null,
           "clean2_esp": -1.0,
+          "clean2_overlap": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -303,6 +300,7 @@
           "has_clean2": false,
           "clean2_layout": null,
           "clean2_esp": -1.0,
+          "clean2_overlap": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -345,6 +343,7 @@
           "has_clean2": false,
           "clean2_layout": null,
           "clean2_esp": -1.0,
+          "clean2_overlap": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -418,6 +417,7 @@
           "has_clean2": false,
           "clean2_layout": null,
           "clean2_esp": -1.0,
+          "clean2_overlap": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -460,6 +460,7 @@
           "has_clean2": false,
           "clean2_layout": null,
           "clean2_esp": -1.0,
+          "clean2_overlap": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -502,6 +503,7 @@
           "has_clean2": false,
           "clean2_layout": null,
           "clean2_esp": -1.0,
+          "clean2_overlap": null,
           "clean2_2q": 0,
           "clean2_depth": 0,
           "thermal_esp_layout": [
@@ -526,5 +528,5 @@
       }
     }
   ],
-  "plan_hash": "8b06973d4e984aa317302599bd026356f6683cc5f518e2fb331e0b56c09f726c"
+  "plan_hash": "c9d9ce817ad278425a64895d3ffa4dec9987c7d0a3b99213cb5561ed2faf056a"
 }

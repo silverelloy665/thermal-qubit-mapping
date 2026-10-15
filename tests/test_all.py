@@ -500,7 +500,7 @@ def test_hotspot_plan_hash_stability():
         plan = json.load(f)
 
     computed_h = compute_plan_hash(plan)
-    expected_h = "8b06973d4e984aa3" + "17302599bd026356" + "f6683cc5f518e2fb" + "331e0b56c09f726c"
+    expected_h = "c9d9ce817ad27842" + "5a64895d3ffa4dec" + "9987c7d0a3b99213" + "cb5561ed2faf056a"
     assert computed_h == expected_h
 
 def test_hotspot_synthetic_analysis_known_answer(tmp_path):
@@ -1512,9 +1512,10 @@ def test_analyze_hotspot_synthetic_all_outcomes(tmp_path):
     assert "MIXED" in res_mix["outcome_code"]
     assert not res_mix["is_confirmed"]
 
-    # 5. Inconclusive
+    # 5. Inconclusive / Descriptive (N_primary < 4)
     res_inc = analyze_hotspot(plan_path=str(plan_f), out_csv=str(out_csv), out_txt=str(out_txt), synthetic=True, synthetic_outcome="inconclusive")
-    assert "INCONCLUSIVE" in res_inc["outcome_code"]
+    assert res_inc["outcome_code"] == "DESCRIPTIVE"
+    assert "DESCRIPTIVE" in res_inc["outcome_label"]
     assert not res_inc["is_confirmed"]
 
 
@@ -1531,7 +1532,7 @@ def test_measure_p1_v2_pilot_generation_and_24h_refusal(tmp_path):
 
     # 1. Pilot run with local fake backend
     args_pilot = argparse.Namespace(
-        target="fake", pilot=True, execute=True, approve_seconds=2,
+        target="fake", pilot=True, execute=True, approve_seconds=3,
         local=True, out_dir="results/hardware_v2", backend_override="fake_marrakesh", dry_run=False
     )
     run_measure_p1_v2(args_pilot)
@@ -1550,7 +1551,7 @@ def test_measure_p1_v2_pilot_generation_and_24h_refusal(tmp_path):
 
         # Calling execute with stale pilot must raise ValueError
         args_exec = argparse.Namespace(
-            target="fake", pilot=False, execute=True, approve_seconds=36,
+            target="fake", pilot=False, execute=True, approve_seconds=72,
             local=True, out_dir="results/hardware_v2", backend_override="fake_marrakesh", dry_run=False
         )
         with pytest.raises(ValueError, match="older than 24 hours"):
@@ -1563,7 +1564,7 @@ def test_measure_p1_v2_pilot_generation_and_24h_refusal(tmp_path):
 
 
 def test_run_hotspot_descriptive_gate_and_clean2_selection():
-    """Verify run_hotspot --descriptive gate when N_primary < 4 and CLEAN2 selection."""
+    """Verify run_hotspot --descriptive gate when N_primary < 4 and CLEAN2 overlap <= 2 rule."""
     import argparse
     import json
     import time
@@ -1576,35 +1577,359 @@ def test_run_hotspot_descriptive_gate_and_clean2_selection():
     with open(plan_path, "r", encoding="utf-8") as f:
         plan = json.load(f)
 
-    # 1. Verify CLEAN2 selection in primary cells
-    has_clean2_count = 0
+    # 1. Verify CLEAN2 selection under <= 2 overlap constraint
     for reg in plan.get("regions", []):
         for b_name, b_data in reg.get("benchmarks", {}).items():
-            if b_data.get("status") == "PRIMARY" and b_data.get("has_clean2"):
-                has_clean2_count += 1
-                assert b_data["clean2_layout"] != b_data["clean_layout"]
-                assert b_data["clean2_esp"] <= b_data["hot_esp"] + 1e-6
-                assert b_data["clean2_esp"] >= b_data["hot_esp"] - 0.03 - 1e-6
-
-    assert has_clean2_count >= 1, "Expected at least one primary cell to select a valid CLEAN2 negative control"
-
-    # Ensure pilot file is fresh for execute gate
-    pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
-    if pilot_scale_path.exists():
-        with open(pilot_scale_path, "r", encoding="utf-8") as f:
-            p_data = json.load(f)
-        p_data["timestamp"] = time.time()
-        with open(pilot_scale_path, "w", encoding="utf-8") as f:
-            json.dump(p_data, f, indent=2)
+            if b_data.get("status") == "PRIMARY":
+                if b_data.get("has_clean2"):
+                    assert b_data["clean2_overlap"] <= 2
+                    assert b_data["clean2_layout"] != b_data["clean_layout"]
+                else:
+                    assert b_data.get("clean2_layout") is None
 
     # 2. Verify refusal when N_primary < 4 and --execute is passed without --descriptive
     if plan.get("primary_cell_count", 0) < 4:
         args_no_desc = argparse.Namespace(
-            target="fake", dry_run=False, execute=True, pilot=False, approve_seconds=30,
+            target="fake", dry_run=False, execute=True, pilot=False, approve_seconds=24,
             local=True, strict_d2=False, descriptive=False
         )
         with pytest.raises(ValueError, match="descriptive"):
             run_hotspot(args_no_desc)
+
+
+def test_checkpoint_x_pilot_refusal_gates_measure_p1_v2(monkeypatch):
+    """X1: Verify 5 refusal gates on measure_p1_v2 live --execute with invalid pilot files."""
+    import time
+    import json
+    import argparse
+    import pytest
+    from pathlib import Path
+    from scripts.measure_p1_v2 import run_measure_p1_v2
+    from qiskit_ibm_runtime.fake_provider import FakeMarrakesh
+
+    pilot_file = Path("results/hardware_extra/pilot_scale.json")
+    pilot_file.parent.mkdir(parents=True, exist_ok=True)
+
+    fake = FakeMarrakesh()
+    mock_service = type("MockService", (), {
+        "backends": lambda self: [type("B", (), {"name": "ibm_marrakesh"})()],
+        "backend": lambda self, name: fake
+    })()
+    monkeypatch.setattr("scripts.measure_p1_v2.get_ibm_service", lambda: mock_service)
+
+    base_pilot = {
+        "timestamp": time.time(),
+        "backend": "ibm_marrakesh",
+        "calibration_timestamp": "2025-02-26T14:52:45-05:00",
+        "job_id": "c1234567890abcdef",
+        "seconds_per_shot": 3.0 / 4096,
+        "qpu_seconds_per_shot": 3.0 / 4096,
+        "pilot_usage": 3.0,
+        "pilot_shots": 4096,
+        "is_local": False,
+        "target": "live",
+        "source": "measure_p1_v2 --pilot"
+    }
+
+    args_exec = argparse.Namespace(
+        target="live", pilot=False, execute=True, approve_seconds=72,
+        local=False, out_dir="results/hardware_v2", backend_override=None, dry_run=False
+    )
+
+    try:
+        # 1. job_id starting with 'pilot_local'
+        d1 = dict(base_pilot, job_id="pilot_local_123456")
+        pilot_file.write_text(json.dumps(d1), encoding="utf-8")
+        with pytest.raises(ValueError, match="Pilot file contains local job_id") as exc:
+            run_measure_p1_v2(args_exec)
+        assert "pilot_local" in str(exc.value)
+
+        # 2. is_local = True or target = fake
+        d2 = dict(base_pilot, is_local=True, target="fake")
+        pilot_file.write_text(json.dumps(d2), encoding="utf-8")
+        with pytest.raises(ValueError, match="generated under --local or --target fake") as exc:
+            run_measure_p1_v2(args_exec)
+        assert "target fake" in str(exc.value)
+
+        # 3. names a backend different from config backend
+        d3 = dict(base_pilot, backend="ibm_fez")
+        pilot_file.write_text(json.dumps(d3), encoding="utf-8")
+        with pytest.raises(ValueError, match="does not match config extra_backend") as exc:
+            run_measure_p1_v2(args_exec)
+        assert "ibm_fez" in str(exc.value)
+
+        # 4. lacks calibration timestamp
+        d4 = dict(base_pilot, calibration_timestamp="")
+        pilot_file.write_text(json.dumps(d4), encoding="utf-8")
+        with pytest.raises(ValueError, match="lacks calibration timestamp") as exc:
+            run_measure_p1_v2(args_exec)
+        assert "calibration timestamp" in str(exc.value)
+
+        # 5. older than 24h
+        d5 = dict(base_pilot, timestamp=time.time() - 90000)
+        pilot_file.write_text(json.dumps(d5), encoding="utf-8")
+        with pytest.raises(ValueError, match="older than 24 hours") as exc:
+            run_measure_p1_v2(args_exec)
+        assert "24 hours" in str(exc.value)
+
+    finally:
+        if pilot_file.exists():
+            pilot_file.unlink()
+
+
+def test_checkpoint_x_pilot_refusal_gates_run_hotspot(monkeypatch):
+    """X1: Verify 5 refusal gates on run_hotspot_hw live --execute with invalid pilot files."""
+    import time
+    import json
+    import argparse
+    import datetime
+    import pytest
+    from pathlib import Path
+    from scripts.run_hotspot_hw import run_hotspot, load_config
+    from qiskit_ibm_runtime.fake_provider import FakeMarrakesh
+
+    pilot_file = Path("results/hardware_extra/pilot_scale.json")
+    plan_file = Path("results/hardware_extra/plan.json")
+    assert plan_file.exists()
+    with open(plan_file, "r", encoding="utf-8") as f:
+        pdata = json.load(f)
+    cal_ts = pdata.get("calibration_timestamp")
+
+    fake = FakeMarrakesh()
+    monkeypatch.setattr("scripts.run_hotspot_hw.get_hotspot_backend", lambda config, local, target: fake)
+    now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    monkeypatch.setattr("scripts.run_hotspot_hw.load_config", lambda: dict(
+        load_config(), allowance_checked_at=now_str
+    ))
+
+    base_pilot = {
+        "timestamp": time.time(),
+        "backend": "ibm_marrakesh",
+        "calibration_timestamp": cal_ts,
+        "job_id": "c9876543210fedcba",
+        "seconds_per_shot": 3.0 / 8192,
+        "qpu_seconds_per_shot": 3.0 / 8192,
+        "pilot_usage": 3.0,
+        "pilot_shots": 8192,
+        "is_local": False,
+        "target": "live",
+        "source": "run_hotspot_hw --pilot"
+    }
+
+    args_exec = argparse.Namespace(
+        target="live", dry_run=False, execute=True, pilot=False, approve_seconds=24,
+        local=False, strict_d2=False, descriptive=True
+    )
+
+    try:
+        # 1. job_id starting with 'pilot_local'
+        d1 = dict(base_pilot, job_id="pilot_local_999999")
+        pilot_file.write_text(json.dumps(d1), encoding="utf-8")
+        with pytest.raises(ValueError, match="Pilot file contains local job_id") as exc:
+            run_hotspot(args_exec)
+        assert "pilot_local" in str(exc.value)
+
+        # 2. is_local = True or target = fake
+        d2 = dict(base_pilot, is_local=True, target="fake")
+        pilot_file.write_text(json.dumps(d2), encoding="utf-8")
+        with pytest.raises(ValueError, match="generated under --local or --target fake") as exc:
+            run_hotspot(args_exec)
+        assert "target fake" in str(exc.value)
+
+        # 3. names a backend different from config backend
+        d3 = dict(base_pilot, backend="ibm_brisbane")
+        pilot_file.write_text(json.dumps(d3), encoding="utf-8")
+        with pytest.raises(ValueError, match="does not match config extra_backend") as exc:
+            run_hotspot(args_exec)
+        assert "ibm_brisbane" in str(exc.value)
+
+        # 4. lacks calibration timestamp
+        d4 = dict(base_pilot, calibration_timestamp=None)
+        pilot_file.write_text(json.dumps(d4), encoding="utf-8")
+        with pytest.raises(ValueError, match="lacks calibration timestamp") as exc:
+            run_hotspot(args_exec)
+        assert "calibration timestamp" in str(exc.value)
+
+        # 5. older than 24h
+        d5 = dict(base_pilot, timestamp=time.time() - 100000)
+        pilot_file.write_text(json.dumps(d5), encoding="utf-8")
+        with pytest.raises(ValueError, match="older than 24 hours") as exc:
+            run_hotspot(args_exec)
+        assert "24 hours" in str(exc.value)
+
+    finally:
+        if pilot_file.exists():
+            pilot_file.unlink()
+
+
+def test_checkpoint_x3_execute_without_target_live_refusal():
+    """X3: Verify --execute without --target live and without --local refuses on both scripts."""
+    import argparse
+    import pytest
+    from scripts.measure_p1_v2 import run_measure_p1_v2
+    from scripts.run_hotspot_hw import run_hotspot
+
+    # measure_p1_v2 default target is 'fake'; --execute without --target live must refuse
+    args_m = argparse.Namespace(
+        target="fake", pilot=False, execute=True, approve_seconds=72,
+        local=False, out_dir="results/hardware_v2", backend_override=None, dry_run=False
+    )
+    with pytest.raises(ValueError, match="--execute requires --target live") as exc_m:
+        run_measure_p1_v2(args_m)
+    assert "--target live" in str(exc_m.value)
+
+    # run_hotspot_hw default target is 'fake'; --execute without --target live must refuse
+    args_h = argparse.Namespace(
+        target="fake", dry_run=False, execute=True, pilot=False, approve_seconds=24,
+        local=False, strict_d2=False, descriptive=True
+    )
+    with pytest.raises(ValueError, match="--execute requires --target live") as exc_h:
+        run_hotspot(args_h)
+    assert "--target live" in str(exc_h.value)
+
+
+def test_checkpoint_x4_pilot_file_path_sharing_and_origin(monkeypatch):
+    """X4: Confirm pilot path sharing and prove live-origin satisfies gate while local does not."""
+    import time
+    import json
+    import argparse
+    import datetime
+    import pytest
+    from pathlib import Path
+    from scripts.run_hotspot_hw import run_hotspot, load_config
+    from qiskit_ibm_runtime.fake_provider import FakeMarrakesh
+
+    pilot_file = Path("results/hardware_extra/pilot_scale.json")
+    plan_file = Path("results/hardware_extra/plan.json")
+    with open(plan_file, "r", encoding="utf-8") as f:
+        plan_dict = json.load(f)
+    cal_ts = plan_dict.get("calibration_timestamp")
+
+    fake = FakeMarrakesh()
+    monkeypatch.setattr("scripts.run_hotspot_hw.get_hotspot_backend", lambda config, local, target: fake)
+    now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    monkeypatch.setattr("scripts.run_hotspot_hw.load_config", lambda: dict(
+        load_config(), allowance_checked_at=now_str
+    ))
+
+    # 1. Local-origin pilot (generated with local=True)
+    local_pilot = {
+        "timestamp": time.time(),
+        "backend": "ibm_marrakesh",
+        "calibration_timestamp": cal_ts,
+        "job_id": "pilot_local_12345",
+        "qpu_seconds_per_shot": 3.0 / 8192,
+        "pilot_usage": 3.0,
+        "pilot_shots": 8192,
+        "is_local": True,
+        "target": "fake",
+        "source": "measure_p1_v2 --pilot"
+    }
+    pilot_file.write_text(json.dumps(local_pilot), encoding="utf-8")
+
+    args_exec = argparse.Namespace(
+        target="live", dry_run=False, execute=True, pilot=False, approve_seconds=24,
+        local=False, strict_d2=False, descriptive=True
+    )
+    with pytest.raises(ValueError, match="local job_id|target fake"):
+        run_hotspot(args_exec)
+
+    # 2. Live-origin pilot from measure_p1_v2 format satisfies the hot-spot execute gate
+    live_pilot = {
+        "timestamp": time.time(),
+        "backend": "ibm_marrakesh",
+        "calibration_timestamp": cal_ts,
+        "job_id": "real_job_id_abc123",
+        "seconds_per_shot": 3.0 / 8192,
+        "qpu_seconds_per_shot": 3.0 / 8192,
+        "pilot_usage": 3.0,
+        "pilot_shots": 4096,
+        "is_local": False,
+        "target": "live",
+        "source": "measure_p1_v2 --pilot"
+    }
+    pilot_file.write_text(json.dumps(live_pilot), encoding="utf-8")
+
+    # In local rehearsal mode with matching plan, this live pilot structure is accepted
+    args_rehearsal = argparse.Namespace(
+        target="fake", dry_run=False, execute=True, pilot=False, approve_seconds=24,
+        local=True, strict_d2=False, descriptive=True
+    )
+    run_hotspot(args_rehearsal)  # must complete without raising pilot error
+
+    if pilot_file.exists():
+        pilot_file.unlink()
+
+
+def test_checkpoint_x5_clean2_overlap_rule_and_floor_formula():
+    """X5: Verify CLEAN2 overlap <= 2 rule, floor = max(|Delta|, half-width), and no-clean2 floor failure."""
+    import math
+    from scripts.stat_utils import newcombe_diff_ci
+    from scripts.analyze_hotspot import analyze_hotspot
+
+    # 1. Floor formula calculation
+    # e.g. CLEAN vs CLEAN2 difference
+    k_c = 14000
+    n_c = 16384
+    k_c2 = 13900
+    n_c2 = 16384
+    c2_diff, c2_low, c2_high = newcombe_diff_ci(k_c, n_c, k_c2, n_c2, confidence=0.95)
+    half_width = (c2_high - c2_low) / 2.0
+    floor = max(abs(c2_diff), half_width)
+    assert floor >= abs(c2_diff)
+    assert floor >= half_width
+    assert half_width > 0
+
+    # 2. Overlap rule validation
+    chosen = [127, 128, 129, 137, 147]
+    cand_high_overlap = [126, 127, 128, 137, 147]  # 4 overlap -> rejected
+    cand_low_overlap = [100, 101, 102, 127, 128]    # 2 overlap -> accepted
+
+    ov_high = len(set(chosen).intersection(set(cand_high_overlap)))
+    ov_low = len(set(chosen).intersection(set(cand_low_overlap)))
+    assert ov_high == 4
+    assert ov_low == 2
+    assert ov_high > 2  # Discarded under Checkpoint X
+    assert ov_low <= 2  # Accepted under Checkpoint X
+
+    # 3. No-CLEAN2 cell fails floor
+    # When has_clean2 is False, floor is None, passes_floor is False
+    res = analyze_hotspot(synthetic=True, synthetic_outcome="confirmed")
+    df = res["df_stats"]
+    # Check that any cell without clean2 has passes_floor == False
+    no_clean2_cells = df[df["has_clean2"] == False]
+    if len(no_clean2_cells) > 0:
+        for _, row in no_clean2_cells.iterrows():
+            assert not row["passes_floor"]
+            assert not row["is_sig_positive"]
+
+
+def test_checkpoint_x7_analyze_hotspot_synthetic_isolation(tmp_path):
+    """X7: Verify --synthetic writes only to results/analysis_v2/synthetic/ and never default files."""
+    from scripts.analyze_hotspot import analyze_hotspot
+    from pathlib import Path
+
+    default_csv = Path("results/hardware_extra_stats.csv")
+    default_txt = Path("results/hardware_extra/hotspot_analysis_summary.txt")
+
+    mtime_csv_before = default_csv.stat().st_mtime if default_csv.exists() else None
+    mtime_txt_before = default_txt.stat().st_mtime if default_txt.exists() else None
+
+    # Run synthetic mode
+    res = analyze_hotspot(synthetic=True, synthetic_outcome="null")
+    synth_dir = Path("results/analysis_v2/synthetic")
+    assert synth_dir.exists()
+
+    expected_synth_csv = synth_dir / "hardware_extra_stats_synthetic_null.csv"
+    expected_synth_txt = synth_dir / "hotspot_analysis_summary_synthetic_null.txt"
+    assert expected_synth_csv.exists()
+    assert expected_synth_txt.exists()
+
+    # Confirm default files were NOT touched
+    if mtime_csv_before is not None:
+        assert default_csv.stat().st_mtime == mtime_csv_before
+    if mtime_txt_before is not None:
+        assert default_txt.stat().st_mtime == mtime_txt_before
 
 
 

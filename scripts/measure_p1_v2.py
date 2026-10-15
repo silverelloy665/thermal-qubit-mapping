@@ -274,6 +274,15 @@ def run_measure_p1_v2(args):
     # 1. Backend resolution & pinning
     target_mode = getattr(args, "target", "fake")
     target_backend_name = config.get("extra_backend", "ibm_marrakesh")
+
+    # X3: measure_p1_v2 without --target live must never touch a live backend.
+    # --execute without --target live must refuse or run offline only and say so.
+    if getattr(args, "execute", False) and target_mode != "live" and not getattr(args, "local", False):
+        raise ValueError("Refusal: --execute requires --target live for QPU execution. To run an offline rehearsal, pass --local explicitly.")
+
+    if getattr(args, "local", False):
+        print("  [OFFLINE LOCAL REHEARSAL ONLY - NOT SUBMITTED TO QPU HARDWARE]")
+
     if args.local or target_mode != "live":
         if args.backend_override == "fake_vigo":
             from qiskit_ibm_runtime.fake_provider import FakeVigoV2
@@ -328,7 +337,33 @@ def run_measure_p1_v2(args):
         isa_circuits.append(isa_qc)
 
     # 3. Timing & Budget Accounting
-    scale = get_scale_estimate()
+    # X1: Budget scenarios must NOT use a local pilot's scale (use default 3.0 s/PUB until a live pilot exists)
+    pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
+    valid_live_pilot = False
+    if pilot_scale_path.exists():
+        try:
+            with open(pilot_scale_path, "r", encoding="utf-8") as f:
+                ps_data = json.load(f)
+            j_id = str(ps_data.get("job_id", "")).strip()
+            is_loc = ps_data.get("is_local", False) or ps_data.get("target") in ["fake", "local"]
+            b_name = ps_data.get("backend", "")
+            cal_ts = ps_data.get("calibration_timestamp")
+            age_s = abs(time.time() - float(ps_data.get("timestamp", 0.0)))
+            if (
+                not j_id.startswith("pilot_local")
+                and not is_loc
+                and b_name == target_backend_name
+                and cal_ts
+                and age_s <= 86400
+            ):
+                valid_live_pilot = True
+                scale = ps_data.get("qpu_seconds_per_shot", ps_data.get("seconds_per_shot", 3.0 / shots))
+        except Exception:
+            valid_live_pilot = False
+
+    if not valid_live_pilot:
+        scale = 3.0 / shots
+
     sec_per_pub = scale * shots
     total_est_seconds = len(circuit_descs) * sec_per_pub
 
@@ -391,6 +426,8 @@ def run_measure_p1_v2(args):
         if args.local or target_mode != "live":
             j_id = f"pilot_local_{int(time.time())}"
             usage = pilot_est_seconds
+            is_local = True
+            origin_target = "fake" if target_mode != "live" else "local"
         else:
             sampler = Sampler(mode=backend)
             sampler.options.dynamical_decoupling.enable = False
@@ -399,6 +436,8 @@ def run_measure_p1_v2(args):
             j_id = job.job_id()
             res = job.result()
             usage = extract_qpu_seconds(job, pilot_est_seconds)
+            is_local = False
+            origin_target = "live"
 
         pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
         pilot_scale_path.parent.mkdir(parents=True, exist_ok=True)
@@ -408,9 +447,12 @@ def run_measure_p1_v2(args):
             "calibration_timestamp": cal_timestamp,
             "job_id": j_id,
             "seconds_per_shot": usage / shots,
+            "qpu_seconds_per_shot": usage / shots,
             "pilot_usage": usage,
             "pilot_shots": shots,
-            "source": "measure_p1_v2 --pilot"
+            "source": "measure_p1_v2 --pilot",
+            "is_local": is_local,
+            "target": origin_target,
         }
         with open(pilot_scale_path, "w", encoding="utf-8") as f:
             json.dump(pilot_data, f, indent=2)
@@ -429,12 +471,36 @@ def run_measure_p1_v2(args):
             raise ValueError(f"Refusal: Pilot file '{pilot_scale_path}' missing. Run --pilot first.")
         with open(pilot_scale_path, "r", encoding="utf-8") as f:
             pilot_data = json.load(f)
-        if time.time() - pilot_data.get("timestamp", 0) > 86400:
-            raise ValueError("Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
-        if pilot_data.get("backend") != backend.name:
-            raise ValueError(f"Refusal: Pilot backend '{pilot_data.get('backend')}' does not match target backend '{backend.name}'.")
-        if pilot_data.get("calibration_timestamp") != cal_timestamp:
-            raise ValueError("Refusal: Pilot calibration timestamp does not match target calibration timestamp. Run --pilot on fresh calibration.")
+
+        # X1 Live --execute pilot refusal gates:
+        if target_mode == "live" and not getattr(args, "local", False):
+            # 1. job_id starting "pilot_local"
+            job_id_str = str(pilot_data.get("job_id", "")).strip()
+            if job_id_str.startswith("pilot_local"):
+                raise ValueError(f"Refusal: Pilot file contains local job_id '{job_id_str}'. Real QPU pilot run required.")
+            # 2. written under --local or --target fake
+            if pilot_data.get("is_local", False) or pilot_data.get("target") in ["fake", "local"] or "fake" in str(pilot_data.get("backend", "")).lower() or "local" in str(pilot_data.get("source", "")).lower():
+                raise ValueError(f"Refusal: Pilot file was generated under --local or --target fake. Real QPU pilot run required.")
+            # 3. names a backend different from config backend
+            if pilot_data.get("backend") != target_backend_name:
+                raise ValueError(f"Refusal: Pilot file backend '{pilot_data.get('backend')}' does not match config extra_backend '{target_backend_name}'.")
+            # 4. lacks a calibration timestamp
+            if not pilot_data.get("calibration_timestamp") or not str(pilot_data.get("calibration_timestamp")).strip():
+                raise ValueError("Refusal: Pilot file lacks calibration timestamp.")
+            # 5. older than 24 h
+            pilot_ts = float(pilot_data.get("timestamp", 0.0))
+            if abs(time.time() - pilot_ts) > 86400:
+                raise ValueError("Refusal: Pilot scale file is older than 24 hours. Re-run --pilot.")
+            # Calibration match check
+            if pilot_data.get("calibration_timestamp") != cal_timestamp:
+                raise ValueError("Refusal: Pilot calibration timestamp does not match target calibration timestamp. Run --pilot on fresh calibration.")
+        else:
+            # Local / offline execute
+            pilot_ts = float(pilot_data.get("timestamp", 0.0))
+            if abs(time.time() - pilot_ts) > 86400:
+                raise ValueError("Refusal: Pilot scale file is older than 24 hours. Run --pilot again.")
+            if pilot_data.get("backend") != backend.name and pilot_data.get("backend") != target_backend_name:
+                raise ValueError(f"Refusal: Pilot backend '{pilot_data.get('backend')}' does not match target backend '{backend.name}'.")
 
         required_approve = math.ceil(total_est_seconds)
         if args.approve_seconds is None or int(args.approve_seconds) != required_approve:

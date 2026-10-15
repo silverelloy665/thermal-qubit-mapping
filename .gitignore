@@ -20,4 +20,5 @@ results/hardware_extra_stats.csv
 results/hardware_extra_stats.provenance.json
 results/hardware_extra/hotspot_analysis_summary.txt
 results/hardware_extra/raw/
+results/analysis_v2/synthetic/
 

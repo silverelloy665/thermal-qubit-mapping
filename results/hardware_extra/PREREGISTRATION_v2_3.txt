@@ -1,0 +1,196 @@
+================================================================================
+PRE-REGISTRATION SPECIFICATION: HARDWARE HOT-SPOT STRESS TEST (VERSION 2.3)
+Commit date: Pre-registered prior to execution of any live hardware runs
+Status: SUPERSEDES Version 2.2 (PREREGISTRATION_v2_2.txt), Version 2.1, and Version 2.0
+================================================================================
+
+1. CORE RESEARCH HYPOTHESIS & SCIENTIFIC QUESTION
+--------------------------------------------------------------------------------
+Research Question:
+On an IBM Heron processor (ibm_marrakesh), does a circuit layout containing a
+verified persistent high-excess qubit perform worse than the best layout that avoids
+it within the same local spatial region of the device?
+
+Metric Labeling & Definition of excess_v2:
+Excess excited-state population is strictly labeled and quantified as:
+  excess_v2 = P(1|0)_isolated - calibrated prob_meas1_prep0
+Fallback Method (when calibrated prob_meas1_prep0 is unexposed by IBM calibration API):
+  excess_v2 = P(1|0)_isolated - median_{c in CONTROL}( P(1|0)_isolated,c )
+  where CONTROL is the pre-selected set of 8 low-noise qubits with baseline excess <= 0
+  and ro <= 0.02 distributed across the chip.
+  The excess calculation strictly avoids the symmetric readout error ro.
+  Every report and plan artifact explicitly labels which subtraction method was used.
+
+Prior Scientific Caveat:
+A qubit with P(1|0) >= 0.20 (such as qubit 125, P10 = 0.42) is expected to degrade
+circuit performance trivially due to state-initialization and bit-flip errors. This test
+evaluates whether calibration/p1 data reliably predicts that degradation in spatial
+routing, NOT whether dilution refrigerator thermal physics is confirmed.
+
+2. AMENDED HOT QUBIT DEFINITION & PERSISTENCE RULE
+--------------------------------------------------------------------------------
+Unlike the v1 protocol (which relied on a single unrepeated characterization snapshot),
+a qubit is classified as HOT under v2.3 if and only if it satisfies the PERSISTENCE RULE:
+  1. excess_v2 > 0.05 in BOTH simultaneous register repetitions (Block A rep0 AND rep1).
+  2. excess_v2 > 0.05 in graph-isolated measurement (Block B, distance >= 3 from other measured qubits).
+  3. Calibrated readout error ro <= 0.20 (excluding pure measurement failures).
+
+Qubits hot in Block A but cold in Block B are classified as "crosstalk-suspect" and
+excluded from the hot-spot experiment. If zero qubits pass the persistence rule,
+the runner refuses to construct an execution plan; the absence of persistent hot spots
+is itself recorded as an empirical finding (Outcome E: ZERO PERSISTENCE).
+
+3. ESP-MATCHED COMPARATORS & LOCAL NEIGHBORHOOD
+--------------------------------------------------------------------------------
+For each candidate region centered at persistent hot qubit h within topological
+neighborhood radius R <= 4 (B_4(h)):
+  - HOT layout:
+      Layout maximizing standard ESP among all connected 5-qubit subgraphs containing h:
+      HOT = argmax_{S subset B_4(h), h in S} ESP_std(S)
+  - CLEAN_matched comparator:
+      CLEAN_matched = argmax_{S subset B_4(h), h not in S} ESP_std(S)
+      subject to the constraints:
+        1. ESP_std(S) <= ESP_std(HOT)
+        2. ESP_std(S) >= ESP_std(HOT) - 0.03
+        3. | 2Q_count(S) - 2Q_count(HOT) | <= 4
+  - UNMATCHABLE definition:
+      If no clean connected 5-qubit subgraph in B_4(h) satisfies both the two-qubit gate
+      matching (|Delta 2Q| <= 4) and has ESP_std within 0.03 of ESP_std(HOT), the cell is
+      classified as UNMATCHABLE (not executed).
+  - Scientific Rationale for ESP Matching:
+      Constraining ESP_std(CLEAN_matched) <= ESP_std(HOT) guarantees that a CLEAN win
+      cannot be explained by standard ESP (gate fidelity/readout error) advantages.
+      The lower bound (within 0.03) ensures the clean layout is not severely handicapped.
+
+4. NEGATIVE CONTROL COMPARATOR (CLEAN2) & INDEPENDENCE RULE
+--------------------------------------------------------------------------------
+To establish a rigorous within-region layout-variance floor, a negative control layout
+(CLEAN2) is evaluated alongside CLEAN_matched:
+
+  - Independence & Overlap Rule (Checkpoint X / v2.3):
+      CLEAN2 must share at most 2 qubits with CLEAN_matched:
+        |CLEAN2 intersect CLEAN_matched| <= 2
+      Among all clean connected 5-qubit subgraphs satisfying the matching constraints:
+        1. ESP_std(S) <= ESP_std(HOT)
+        2. ESP_std(S) >= ESP_std(HOT) - 0.03
+        3. | 2Q_count(S) - 2Q_count(HOT) | <= 4
+        4. |S intersect CLEAN_matched| <= 2
+      the candidate with the LOWEST qubit overlap is selected. Ties are broken by highest
+      ESP_std. Layouts sharing 3 or 4 qubits with CLEAN_matched are discarded to prevent
+      spatial co-location confounding.
+      If no candidate satisfies the overlap constraint (|overlap| <= 2), then no CLEAN2
+      exists for that cell (has_clean2 = False).
+
+5. LAYOUT-VARIANCE FLOOR FORMULA & CELL DECISION RULE
+--------------------------------------------------------------------------------
+Layout-Variance Floor Formula (Checkpoint X / v2.3):
+  The layout-variance floor is defined as:
+    floor = max( |CLEAN_matched - CLEAN2|, Newcombe_95%_half_width(CLEAN_matched - CLEAN2) )
+  where Newcombe_95%_half_width = (ci_high - ci_low) / 2.0.
+  
+  Rationale:
+  Taking the maximum of the empirical point estimate difference and its 95% Newcombe
+  confidence interval half-width accounts simultaneously for:
+    (a) physical spatial variance between distinct layout embeddings on the lattice, and
+    (b) statistical binomial shot-noise uncertainty in estimating the negative control difference.
+
+Cell Decision Rule:
+  A primary cell counts as statistically significant (positive) if and only if ALL of the following hold:
+    1. Newcombe hybrid-score 95% CI lower bound of (CLEAN_matched - HOT) > 0.
+    2. Pooled difference Delta_success >= 0.5 percentage points (+0.005).
+    3. Repetition sign agreement: Delta_success(rep0) > 0 AND Delta_success(rep1) > 0.
+    4. Variance Floor: CLEAN2 exists (has_clean2 = True) AND
+       |CLEAN_matched - HOT| > floor = max(|CLEAN - CLEAN2|, Newcombe_half_width).
+
+No-CLEAN2 Rule:
+  If a primary cell has no valid CLEAN2 (has_clean2 = False), it lacks empirical spatial
+  variance control. The cell is executed and reported transparently in tables, but
+  passes_floor is declared False, and the cell CANNOT count toward hypothesis confirmation.
+
+6. STUDY STATUS & UNIFIED DESCRIPTIVE POWER GATE
+--------------------------------------------------------------------------------
+Under v2.3, INCONCLUSIVE and DESCRIPTIVE are ONE unified status flag, NOT two separate
+competing outcomes:
+
+  - Power Gate:
+      Confirmatory hypothesis testing requires a minimum of N_primary >= 4 executed primary cells.
+  - Unified Status Flag:
+      If fewer than 4 primary cells are executed (N_primary < 4):
+        The execution flag is: [DESCRIPTIVE, NOT CONFIRMATORY - N_primary < 4].
+        The runner executes only under `--descriptive` (or offline `--local`).
+        All summary tables, plots, and CSV provenance are labeled DESCRIPTIVE.
+        The outcome CANNOT be declared CONFIRMED under any circumstance.
+        Reporting is strictly exploratory and descriptive.
+
+7. IDENTICAL GATES & TRANSPILER PASSES
+--------------------------------------------------------------------------------
+All primary circuits (GHZ-5, BV-5, Mirror-5) are compiled under the identical optimization
+pipeline (SABRE routing across seeds {0, 1, 2}, optimization_level=3) to native Heron
+gates (CZ, RZ, SX, X). Circuit operation sequences are validated prior to execution.
+
+8. PRE-DECLARED OUTCOME CLASSIFICATION TABLE
+--------------------------------------------------------------------------------
+When powered (N_primary >= 4), Outcomes A through E are mutually exclusive and exhaustive.
+When underpowered (N_primary < 4), the entire study operates under the DESCRIPTIVE status flag.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
+Outcome Pattern                Statistical Definition                     What It Means (Hypotheses not tested here)   What It Does NOT Mean
+-------------------------------------------------------------------------------------------------------------------------------------------------
+A. CONFIRMED                   N_primary >= 4, >= 50% of executed primary Avoidance of persistent hot qubit is         Does NOT confirm dilution
+                               cells show significant positive difference associated with higher algorithmic success; refrigerator thermal physics;
+                               (passing Newcombe CI, sign agreement, and  standard ESP does not explain the margin.    excess p1 could be a persistent
+                               variance floor), and 0 inverted cells.     Hypotheses not tested: thermal vs TLS vs     defect rather than thermal
+                                                                          drive crosstalk mechanism.                   equilibrium.
+
+B. NULL / NOT CONFIRMED        N_primary >= 4, < 50% of executed primary  Measured p1 excess did not translate into    Does NOT mean p1 was zero;
+                               cells significant, and 0 significant       circuit-level degradation.                   indicates noise insensitivity,
+                               inverted cells.                            Hypotheses not tested: error mitigation,     drive compensation, or readout-
+                                                                          spectator noise, or dynamical decoupling.    dominated baseline errors.
+
+C. INVERTED                    N_primary >= 4, >= 50% of executed primary Refutes the predictive utility of p1        Does NOT mean excited states
+                               cells show significant inverted            calibration data for spatial layout          are beneficial; indicates
+                               difference, and 0 significant positive.    selection. Hypotheses not tested:            unaccounted spectator crosstalk
+                                                                          unaccounted spectator crosstalk or routing.   or routing overhead.
+
+D. MIXED                       N_primary >= 4, with at least 1            Device performance is benchmark- or region-  Does NOT provide consistent
+                               significant positive cell AND at least 1   dependent; p1 excess does not consistently   confirmatory evidence for spatial
+                               significant inverted cell.                 predict circuit outcome across algorithms.   thermal routing.
+                                                                          Hypotheses not tested: algorithm sensitivity.
+
+E. ZERO PERSISTENCE            Zero qubits met the persistence rule on    Earlier hot readings were not reproduced.    Does NOT mean the test failed;
+                               the execution day; characterization        Hypotheses not tested: transient defect,     non-persistence is an empirical
+                               refuses plan execution.                    readout crosstalk, or time-varying defect.   finding saving QPU budget.
+
+[STATUS FLAG:                  N_primary < 4 primary cells available.     Lattice connectivity or gate overhead        Does NOT confirm or refute
+ DESCRIPTIVE, NOT              Executed only if --descriptive is passed;  prevents well-powered confirmatory testing.  the hypothesis; pre-declares
+ CONFIRMATORY]                 labeled DESCRIPTIVE, NOT CONFIRMATORY.     Output is exploratory only; never outputs    underpowered status to prevent
+                                                                          CONFIRMED.                                   post-hoc storytelling.
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+9. GATED LIVE EXECUTION & PILOT SAFETY PROTOCOL (CHECKPOINT X)
+--------------------------------------------------------------------------------
+1. Shared Pilot Scale File:
+   `measure_p1_v2.py --pilot` writes `results/hardware_extra/pilot_scale.json`.
+   `run_hotspot_hw.py --execute` reads `results/hardware_extra/pilot_scale.json`.
+   Both scripts share the exact same format and schema.
+2. Five Mandatory Pilot Refusal Gates for Live --execute:
+   Execution on live QPU strictly refuses if the pilot file:
+     (a) has job_id starting with 'pilot_local'
+     (b) was generated under --local or --target fake (is_local=True or target != 'live')
+     (c) names a backend different from config extra_backend
+     (d) lacks a calibration timestamp
+     (e) has a timestamp older than 24 hours.
+3. Budget Isolation:
+   Budget calculations must NEVER use a local pilot scale, defaulting to 3.0 s/PUB until a
+   verified live pilot exists.
+4. Target Protection:
+   Neither script touches a live backend unless `--target live` is explicitly provided.
+   Running `--execute` without `--target live` and without `--local` is refused.
+5. Priority Step Gating:
+   Live execution proceeds in strict priority order:
+     Step 1: Pilot (measure_p1_v2.py --pilot --target live)
+     Step 2: p1v2 (measure_p1_v2.py --execute --target live)
+     Step 3: Hotspot Plan (run_hotspot_hw.py --execute --target live)
+   If the stored allowance was checked > 24 hours ago, ALL live steps are flagged NO-GO.
+================================================================================
+

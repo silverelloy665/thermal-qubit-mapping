@@ -176,6 +176,19 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
 
     if synthetic or not has_real_counts:
         is_synthetic = True
+        # X7: --synthetic must write only under results/analysis_v2/synthetic/ and never to default output files
+        synth_dir = Path("results/analysis_v2/synthetic")
+        synth_dir.mkdir(parents=True, exist_ok=True)
+        default_csv = Path("results/hardware_extra_stats.csv").resolve()
+        default_txt = Path("results/hardware_extra/hotspot_analysis_summary.txt").resolve()
+        target_csv_path = Path(out_csv).resolve()
+        target_txt_path = Path(out_txt).resolve()
+        
+        if target_csv_path == default_csv:
+            out_csv = str(synth_dir / f"hardware_extra_stats_synthetic_{synthetic_outcome}.csv")
+        if target_txt_path == default_txt:
+            out_txt = str(synth_dir / f"hotspot_analysis_summary_synthetic_{synthetic_outcome}.txt")
+
         raw_dict = generate_synthetic_hotspot_counts(
             plan_data, outcome=synthetic_outcome, target_effect_pts=synthetic_effect_pts
         )
@@ -236,9 +249,12 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
 
         # CLEAN2 negative control evaluation
         has_clean2 = b_val.get("has_clean2", False)
-        clean2_diff_pooled = 0.0
-        floor_value = 0.0
-        passes_floor = True
+        clean2_diff_pooled = None
+        c2_ci_low = None
+        c2_ci_high = None
+        c2_half_width = None
+        floor_value = None
+        passes_floor = False
 
         if has_clean2:
             counts_c2_0 = raw_dict.get((r_id, b_name, "CLEAN2", 0), {})
@@ -254,11 +270,12 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
 
             k_c_pool = k_c0 + k_c1
             n_c_pool = n_c0 + n_c1
-            clean2_diff_pooled, _, _ = newcombe_diff_ci(k_c_pool, n_c_pool, k_c2_pool, n_c2_pool, confidence=0.95)
-            floor_value = abs(clean2_diff_pooled)
+            clean2_diff_pooled, c2_ci_low, c2_ci_high = newcombe_diff_ci(k_c_pool, n_c_pool, k_c2_pool, n_c2_pool, confidence=0.95)
+            c2_half_width = (c2_ci_high - c2_ci_low) / 2.0
+            floor_value = max(abs(clean2_diff_pooled), c2_half_width)
             passes_floor = (abs(diff_pooled) > floor_value)
         else:
-            passes_floor = False  # Per W4(e): if CLEAN2 does not exist, cell is reported but does not count
+            passes_floor = False  # Per X5: if CLEAN2 does not exist, cell lacks variance floor control and does not count
 
         # Criteria for Significance
         # 1. Positive: CI low > 0, diff >= +0.005, rep0 > 0, rep1 > 0, passes floor
@@ -284,7 +301,9 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
             "clean_drift_pts": cell_res["clean_rep_drift"] * 100.0,
             "hot_drift_pts": cell_res["hot_rep_drift"] * 100.0,
             "has_clean2": has_clean2,
-            "floor_value_pts": floor_value * 100.0,
+            "floor_value_pts": (floor_value * 100.0) if floor_value is not None else None,
+            "clean2_diff_pts": (clean2_diff_pooled * 100.0) if clean2_diff_pooled is not None else None,
+            "c2_half_width_pts": (c2_half_width * 100.0) if c2_half_width is not None else None,
             "passes_floor": passes_floor,
             "is_sig_positive": is_sig_positive,
             "is_sig_inverted": is_sig_inverted,
@@ -334,9 +353,9 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
     n_inv = sum(c["is_sig_inverted"] for c in cell_evaluations)
 
     if n_primary < 4 or synthetic_outcome == "inconclusive":
-        outcome_code = "F. INCONCLUSIVE / UNDERPOWERED"
-        outcome_label = f"INCONCLUSIVE (underpowered: {n_primary} primary cells < 4 required)"
-        outcome_desc = "Fewer than 4 primary cells available. Lattice connectivity or 2Q gate overhead prevents confirmatory testing."
+        outcome_code = "DESCRIPTIVE"
+        outcome_label = f"DESCRIPTIVE, NOT CONFIRMATORY (underpowered: {n_primary} primary cells < 4 required)"
+        outcome_desc = "Fewer than 4 primary cells available. Lattice connectivity or 2Q gate overhead prevents confirmatory testing; results are strictly descriptive."
         is_confirmed = False
     elif n_pos > 0 and n_inv > 0:
         outcome_code = "D. MIXED"
@@ -366,7 +385,7 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
         "backend": plan_data.get("backend"),
         "calibration_timestamp": plan_data.get("calibration_timestamp"),
         "plan_hash": plan_data.get("plan_hash"),
-        "preregistration_version": "v2.2",
+        "preregistration_version": "v2.3",
         "is_synthetic": is_synthetic,
         "synthetic_outcome": synthetic_outcome if is_synthetic else None,
         "primary_cells_executed": n_primary,
@@ -387,18 +406,19 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
         lines.append("[SYNTHETIC KNOWN-ANSWER TEST - NOT EVIDENCE - DO NOT CITE]")
     if n_primary < 4:
         lines.append("[DESCRIPTIVE, NOT CONFIRMATORY - N_primary < 4]")
-    lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: STATISTICAL ANALYSIS REPORT (v2.2)")
+    lines.append("PRE-REGISTERED HARDWARE HOT-SPOT STRESS TEST: STATISTICAL ANALYSIS REPORT (v2.3)")
     lines.append(f"Analysis Timestamp: {datetime.datetime.now(datetime.timezone.utc).isoformat()}")
     lines.append("=" * 95)
     lines.append("")
     lines.append("1. METHODOLOGICAL SPECIFICATIONS & DISCLOSURES")
     lines.append("-" * 95)
     lines.append("  - Comparator:              ESP-matched clean layout (ESP_clean <= ESP_hot within 0.03, |Delta 2Q| <= 4)")
-    lines.append("  - Negative Control:        CLEAN2 matched layout for empirical layout-variance floor")
+    lines.append("  - Negative Control:        CLEAN2 matched layout for empirical layout-variance floor (overlap <= 2 qubits)")
     lines.append("  - Metric:                  Difference of independent proportions: success_prob(CLEAN) - success_prob(HOT)")
     lines.append("  - Statistical CI:          Newcombe hybrid-score 95% CI (Method 10, Newcombe 1998) pooled over 2 reps")
     lines.append("  - Noise Scope:             CI covers shot noise only; context given by layout-variance floor")
-    lines.append("  - Decision Rules:          Diff >= +0.5 pt, CI low > 0, rep0/rep1 sign agreement, |diff| > |clean - clean2|")
+    lines.append("  - Layout-Variance Floor:   max(|clean - clean2|, Newcombe 95% half-width of clean - clean2)")
+    lines.append("  - Decision Rules:          Diff >= +0.5 pt, CI low > 0, rep0/rep1 sign agreement, |diff| > floor")
     lines.append(f"  - Mode:                    {'SYNTHETIC TEST' if is_synthetic else 'REAL QPU HARDWARE EXECUTION'}")
     lines.append("")
     lines.append("2. PRIMARY CELL STATISTICAL RESULTS (CLEAN - HOT)")
@@ -409,7 +429,7 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
     for c in cell_evaluations:
         ci_str = f"[{c['ci_low_pts']:+.3f}, {c['ci_high_pts']:+.3f}]"
         reps_str = f"{c['diff_rep0_pts']:+.2f} / {c['diff_rep1_pts']:+.2f}"
-        floor_str = f"{c['floor_value_pts']:.2f} pt" if c['has_clean2'] else "No Clean2"
+        floor_str = f"{c['floor_value_pts']:.2f} pt" if c['has_clean2'] and c['floor_value_pts'] is not None else "No Clean2"
         pass_str = "PASS (+)" if c['is_sig_positive'] else ("PASS (-)" if c['is_sig_inverted'] else "FAIL")
         lines.append(
             f"R{c['region_id']:<6} {c['benchmark']:<7} {c['clean_score']*100:<9.2f} {c['hot_score']*100:<9.2f} "
@@ -417,7 +437,7 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
         )
     lines.append("-" * 115)
     lines.append("")
-    lines.append("3. OVERALL OUTCOME DETERMINATION (MUTUALLY EXCLUSIVE & EXHAUSTIVE A-F)")
+    lines.append("3. OVERALL OUTCOME DETERMINATION (MUTUALLY EXCLUSIVE & EXHAUSTIVE A-E)")
     lines.append("-" * 95)
     lines.append(f"  Total Primary Cells:      {n_primary} (Threshold for Confirmatory Power: >= 4)")
     lines.append(f"  Significant Positive:     {n_pos}")
@@ -447,7 +467,7 @@ def analyze_hotspot(plan_path="results/hardware_extra/plan.json",
     }
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyze Hotspot Hardware Stress Test Results (v2.2)")
+    parser = argparse.ArgumentParser(description="Analyze Hotspot Hardware Stress Test Results (v2.3)")
     parser.add_argument("--plan", default="results/hardware_extra/plan.json", help="Path to plan.json")
     parser.add_argument("--raw-dir", default="results/hardware_extra/raw", help="Path to raw JSON counts")
     parser.add_argument("--out-csv", default="results/hardware_extra_stats.csv", help="Path to output stats CSV")
@@ -459,11 +479,21 @@ def main():
     parser.add_argument("--descriptive", action="store_true", help="Label output descriptive if N_primary < 4")
     args = parser.parse_args()
 
+    out_csv = args.out_csv
+    out_txt = args.out_txt
+    if args.synthetic:
+        synth_dir = Path("results/analysis_v2/synthetic")
+        synth_dir.mkdir(parents=True, exist_ok=True)
+        if out_csv == "results/hardware_extra_stats.csv":
+            out_csv = str(synth_dir / f"hardware_extra_stats_synthetic_{args.outcome}.csv")
+        if out_txt == "results/hardware_extra/hotspot_analysis_summary.txt":
+            out_txt = str(synth_dir / f"hotspot_analysis_summary_synthetic_{args.outcome}.txt")
+
     analyze_hotspot(
         plan_path=args.plan,
         raw_dir=args.raw_dir,
-        out_csv=args.out_csv,
-        out_txt=args.out_txt,
+        out_csv=out_csv,
+        out_txt=out_txt,
         synthetic=args.synthetic,
         synthetic_outcome=args.outcome,
         synthetic_effect_pts=args.effect,
