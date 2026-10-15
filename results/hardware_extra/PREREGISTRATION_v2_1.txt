@@ -1,0 +1,142 @@
+================================================================================
+PRE-REGISTRATION SPECIFICATION: HARDWARE HOT-SPOT STRESS TEST (VERSION 2.1)
+Commit date: Pre-registered prior to execution of any live hardware v2/v2.1 runs
+Status: SUPERSEDES Version 2.0 (PREREGISTRATION_v2.txt)
+================================================================================
+
+1. CORE RESEARCH HYPOTHESIS & SCIENTIFIC QUESTION
+--------------------------------------------------------------------------------
+Research Question:
+On a real IBM Heron processor (ibm_marrakesh), does a circuit layout containing a
+verified persistent high-excess qubit perform worse than the best layout that avoids
+it within the same local spatial region of the device?
+
+Metric Labeling & Definition of excess_v2:
+Excess excited-state population is strictly labeled and quantified as:
+  excess_v2 = P(1|0)_isolated - calibrated prob_meas1_prep0
+Fallback Method (when calibrated prob_meas1_prep0 is unexposed by IBM calibration API):
+  excess_v2 = P(1|0)_isolated - median_{c in CONTROL}( P(1|0)_isolated,c )
+  where CONTROL is the pre-selected set of 8 low-noise qubits with baseline excess <= 0
+  and ro <= 0.02 distributed across the chip.
+  The excess calculation strictly avoids the symmetric readout error ro.
+  Every report and plan artifact explicitly labels which subtraction method was used.
+
+2. AMENDED HOT QUBIT DEFINITION & PERSISTENCE RULE
+--------------------------------------------------------------------------------
+Unlike the v1 protocol (which relied on a single unrepeated characterization snapshot),
+a qubit is classified as HOT under v2.1 if and only if it satisfies the PERSISTENCE RULE:
+  1. excess_v2 > 0.05 in BOTH simultaneous register repetitions (Block A rep0 AND rep1).
+  2. excess_v2 > 0.05 in graph-isolated measurement (Block B, distance >= 3 from other measured qubits).
+  3. Calibrated readout error ro <= 0.20 (excluding pure measurement failures).
+
+Qubits hot in Block A but cold in Block B are classified as "crosstalk-suspect" and
+excluded from the hot-spot experiment. If zero qubits pass the persistence rule,
+the runner refuses to construct an execution plan; the absence of persistent hot spots
+is itself recorded as an empirical finding.
+
+Critical Prior Scientific Caveat:
+A qubit with P(1|0) >= 0.20 (such as qubit 125, P10 = 0.42) is expected to degrade
+circuit performance trivially due to state-initialization and bit-flip errors. This test
+evaluates whether calibration/p1 data reliably predicts that degradation in spatial
+routing, NOT whether dilution refrigerator temperature physics is confirmed.
+
+3. ESP-MATCHED COMPARATOR & LOCAL NEIGHBORHOOD
+--------------------------------------------------------------------------------
+For each candidate region centered at persistent hot qubit h within topological
+neighborhood radius R <= 4 (B_4(h)):
+  - HOT layout:
+      Layout maximizing standard ESP among all connected 5-qubit subgraphs containing h:
+      HOT = argmax_{S subset B_4(h), h in S} ESP_std(S)
+  - CLEAN_matched comparator:
+      CLEAN_matched = argmax_{S subset B_4(h), h not in S} ESP_std(S)
+      subject to the constraints:
+        1. ESP_std(S) <= ESP_std(HOT)
+        2. ESP_std(S) >= ESP_std(HOT) - 0.03
+        3. | 2Q_count(S) - 2Q_count(HOT) | <= 4
+  - UNMATCHABLE definition:
+      If no clean connected 5-qubit subgraph in B_4(h) satisfies both the two-qubit gate
+      matching (|Delta 2Q| <= 4) and has ESP_std within 0.03 of ESP_std(HOT), the cell is
+      classified as UNMATCHABLE.
+  - Scientific Rationale for ESP Matching:
+      Constraining ESP_std(CLEAN_matched) <= ESP_std(HOT) guarantees that a CLEAN win
+      cannot be explained by standard ESP (gate fidelity/readout error) advantages.
+      The lower bound (within 0.03) ensures the clean layout is not severely handicapped.
+
+4. PRIMARY CELLS & EXECUTION FILTERING
+--------------------------------------------------------------------------------
+Primary Cells are cells that are BOTH:
+  1. Non-confounded (|Delta 2Q| <= 4)
+  2. Matched (CLEAN_matched exists within 0.03 of ESP_std(HOT))
+
+Execution Rule:
+  Confounded and unmatchable cells are NOT executed on hardware. They are reported
+  transparently in the dry-run plan as "not executed". Only PRIMARY cells are scheduled
+  for execution.
+
+Minimum Primary Cells Rule (Power Gate):
+  A minimum of 4 PRIMARY cells is required to evaluate the hypothesis and call CONFIRMED.
+  If fewer than 4 primary cells are available, the experimental outcome is pre-declared
+  INCONCLUSIVE (underpowered), regardless of observed point estimates.
+
+5. IDENTICAL GATES & TRANSPILER PASSES
+--------------------------------------------------------------------------------
+All primary circuits (GHZ-5, BV-5, Mirror-5) are compiled under the identical optimization
+pipeline (SABRE routing across seeds {0, 1, 2}, optimization_level=3) to native Heron
+gates (CZ, RZ, SX, X).
+
+6. PRIMARY OUTCOME & PRE-REGISTERED DECISION RULE
+--------------------------------------------------------------------------------
+Difference Confidence Interval:
+  Paired difference in ideal-state success probability:
+    Delta_success = success_prob(CLEAN_matched) - success_prob(HOT)
+  evaluated per primary cell using the Newcombe hybrid-score 95% confidence interval
+  for independent proportions (Method 10, Newcombe 1998) pooled over 2 repetitions
+  (16,384 total pooled shots per condition).
+  As a stability check, the rep0 vs rep1 difference is computed and printed for each arm.
+
+Pre-Registered Decision Rule:
+  - A primary cell demonstrates a significant effect if the Newcombe 95% confidence
+    interval of (CLEAN_matched - HOT) strictly excludes 0 in the predicted direction
+    (lower bound > 0) AND the difference is >= 0.5 percentage points (+0.005).
+  - The experimental benchmark is CONFIRMED if and only if:
+      1. At least 4 primary cells were executed.
+      2. A majority (>= 50%) of executed primary cells demonstrate a significant effect.
+  - If fewer than 4 primary cells are available, the outcome is INCONCLUSIVE.
+
+7. COMPREHENSIVE OUTCOME INTERPRETATION TABLE
+--------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------
+Outcome Pattern                Statistical Definition                     What It Means                         What It Does NOT Mean
+-----------------------------------------------------------------------------------------------------------------------------------------
+A. CONFIRMED                   N_primary >= 4, and >= 50% of primary      Persistent p1 excess reliably         Does NOT confirm dilution
+                               cells show Newcombe CI lower bound > 0     degrades algorithmic execution on     refrigerator thermal physics;
+                               and Delta_success >= 0.5 pt.               hardware; spatial routing avoiding    high p1 could be a persistent
+                                                                          it mitigates error without standard   defect rather than thermal
+                                                                          ESP confounding.                      equilibrium.
+
+B. NULL / NOT CONFIRMED        N_primary >= 4, and < 50% of primary       Measured p1 excess does not translate  Does NOT mean p1 was zero;
+                               cells show significant effect (CI          into circuit-level degradation (e.g.  indicates error mitigation,
+                               includes 0 or Delta < 0.5 pt).             readout-dominated error or drive      drive compensation, or noise
+                                                                          compensation).                        insensitivity.
+
+C. INVERTED                    N_primary >= 4, and significant            Refutes the predictive validity of    Does NOT mean excited states
+                               difference in inverted direction           p1 calibration data for spatial       are beneficial; indicates
+                               (HOT > CLEAN, CI upper bound < 0).         layout selection.                     unaccounted spectator crosstalk
+                                                                                                                in the clean region.
+
+D. SUPRA-READOUT EFFECT         Delta_success significantly exceeds        Hot qubits degrade success by more    Does NOT prove elevated
+                                predicted readout penalty                  than predicted by readout alone       temperature; excess error
+                                (Delta_success > Delta_readout).           (excess error manifests dynamically   may manifest via two-qubit gate
+                                                                           or through crosstalk).                entanglement or spectator noise.
+
+E. ZERO PERSISTENCE            No qubit met the persistence rule on this  Earlier hot readings were not         Does NOT mean the hardware
+                               day; earlier hot readings were not         reproduced (transient, crosstalk, or  test failed; the non-persistence
+                               reproduced (transient, crosstalk, or       time-varying defect not               is itself a primary empirical
+                               time-varying defect not distinguished).    distinguished). QPU run is refused.   finding saving QPU budget.
+
+F. INCONCLUSIVE /              Fewer than 4 primary cells available       Lattice connectivity or gate          Does NOT confirm or refute
+   UNDERPOWERED                (N_primary < 4) due to 2Q routing          overhead prevents well-powered        the hypothesis; pre-declares
+                               confounding or unmatchable ESP.            hypothesis testing. Outcome is        underpowered status to prevent
+                                                                          pre-declared INCONCLUSIVE.            post-hoc storytelling.
+-----------------------------------------------------------------------------------------------------------------------------------------
+================================================================================

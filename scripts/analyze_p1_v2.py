@@ -17,6 +17,7 @@ import glob
 import json
 import math
 import argparse
+import numpy as np
 from pathlib import Path
 
 # Ensure project root is on sys.path
@@ -43,10 +44,21 @@ def classify_qubit_persistence(exc_a1, exc_a2, exc_b, se_a1=0.01, se_a2=0.01, se
 
 def analyze_p1_v2(p1v2_file=None, base_p1_file="results/hardware/p1_ibm_marrakesh_20261009T001839_0530.json", out_file="results/analysis_v2/p1v2_summary.txt"):
     if p1v2_file is None:
-        files = sorted(glob.glob("results/hardware_v2/p1v2_*.json"))
-        if not files:
-            raise FileNotFoundError("No p1v2 characterization files found in results/hardware_v2/.")
-        p1v2_file = files[-1]
+        # Default to newest NON-fake file in results/hardware_v2/
+        non_fake = [
+            p for p in glob.glob("results/hardware_v2/p1v2_*.json")
+            if "fake" not in os.path.basename(p).lower()
+        ]
+        if non_fake:
+            files = sorted(non_fake)
+            p1v2_file = files[-1]
+        else:
+            # Fallback to offline rehearsal if present
+            rehearsal = sorted(glob.glob("results/hardware_v2/offline_rehearsal/p1v2_*.json"))
+            if rehearsal:
+                p1v2_file = rehearsal[-1]
+            else:
+                raise FileNotFoundError("No p1v2 characterization files found in results/hardware_v2/.")
 
     with open(p1v2_file, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -63,6 +75,7 @@ def analyze_p1_v2(p1v2_file=None, base_p1_file="results/hardware/p1_ibm_marrakes
             old_hot_set.add(int(q_str))
 
     backend = data.get("backend", "unknown")
+    is_fake = backend.lower().startswith("fake") or "fake" in str(p1v2_file).lower()
     cal_ts = data.get("calibration_timestamp", "unknown")
     exec_ts = data.get("execution_timestamp", "unknown")
     shots = data.get("shots_per_pub", 4096)
@@ -73,7 +86,27 @@ def analyze_p1_v2(p1v2_file=None, base_p1_file="results/hardware/p1_ibm_marrakes
     measurements = data.get("measurements", {})
 
     total_qubits = len(measurements)
-    fallback_used = not asym_exposed
+
+    # Determine baseline subtraction method per v2.1:
+    # If prob_meas1_prep0 is exposed: use calibrated prob_meas1_prep0
+    # Fallback when unexposed: median isolated Block B P(1|0) of CONTROL qubits (not symmetric ro)
+    control_qubits = data.get("qubit_sets", {}).get("CONTROL", [])
+    control_p10s = []
+    for c_q in control_qubits:
+        c_str = str(c_q)
+        if c_str in measurements and "B" in measurements[c_str]:
+            b_vals = [rep_v["P10"] for rep_v in measurements[c_str]["B"].values() if "P10" in rep_v]
+            if b_vals:
+                control_p10s.append(sum(b_vals) / len(b_vals))
+
+    median_control_p10 = float(np.median(control_p10s)) if control_p10s else 0.0
+
+    if asym_exposed and any(v is not None for v in cal_p10.values()):
+        baseline_method = "calibrated_prob_meas1_prep0"
+        baseline_label = "calibrated prob_meas1_prep0 per qubit"
+    else:
+        baseline_method = "isolated_control_median"
+        baseline_label = f"isolated control qubits median ({median_control_p10:.4f})"
 
     results_table = []
     persistent_hot = []
@@ -90,13 +123,13 @@ def analyze_p1_v2(p1v2_file=None, base_p1_file="results/hardware/p1_ibm_marrakes
     for q_str, blocks in measurements.items():
         q = int(q_str)
         
-        # Determine baseline subtraction (calibrated prob_meas1_prep0 or ro fallback)
-        sub_val = cal_p10.get(q_str)
-        if sub_val is None:
-            sub_val = cal_ro.get(q_str, 0.0)
-            q_fallback = True
+        # Determine baseline subtraction value
+        if baseline_method == "calibrated_prob_meas1_prep0" and cal_p10.get(q_str) is not None:
+            sub_val = cal_p10[q_str]
+            sub_type = "p10_cal"
         else:
-            q_fallback = False
+            sub_val = median_control_p10
+            sub_type = "ctrl_med"
 
         # Block A: all qubits
         a_data = blocks.get("A", {})
@@ -133,7 +166,7 @@ def analyze_p1_v2(p1v2_file=None, base_p1_file="results/hardware/p1_ibm_marrakes
             exc_c = None
 
         # 2-SE margin calculation on Block A mean
-        se = math.sqrt(p10_a_mean * (1.0 - p10_a_mean) / (shots * 2)) # 2 reps pooled
+        se = math.sqrt(p10_a_mean * (1.0 - p10_a_mean) / (shots * 2)) if shots > 0 else 0.0
         if exc_a_mean > 0.01:
             count_gt_001 += 1
             if (exc_a_mean - 2 * se) > 0.01:
@@ -168,7 +201,7 @@ def analyze_p1_v2(p1v2_file=None, base_p1_file="results/hardware/p1_ibm_marrakes
         results_table.append({
             "qubit": q,
             "sub_val": sub_val,
-            "fallback": q_fallback,
+            "sub_type": sub_type,
             "p10_a0": p10_a0,
             "p10_a1": p10_a1,
             "exc_a0": exc_a0,
@@ -187,40 +220,46 @@ def analyze_p1_v2(p1v2_file=None, base_p1_file="results/hardware/p1_ibm_marrakes
     out_p = Path(out_file)
     out_p.parent.mkdir(parents=True, exist_ok=True)
 
-    lines = [
-        "=" * 85,
-        "ENHANCED P1 (v2) CHARACTERIZATION AUDIT & PERSISTENCE REPORT",
-        "=" * 85,
-        f"Characterization File:    {p1v2_file}",
-        f"Backend:                  {backend} ({total_qubits} qubits audited)",
-        f"Calibration Timestamp:    {cal_ts}",
-        f"Execution Timestamp:      {exec_ts}",
-        f"Shots per PUB:            {shots} (pooled A shots: {shots * 2})",
-        f"Calibrated Asymmetry:     {'EXPOSED' if asym_exposed else 'UNEXPOSED (fell back to symmetric readout error ro)'}",
-        "",
-        "1. PERSISTENCE & CLASSIFICATION SUMMARY",
-        "-" * 85,
-        f"- PERSISTENT HOT QUBITS:  {len(persistent_hot)} qubits {persistent_hot}",
-        "  (Condition: excess_v2 > 0.05 in BOTH Block A repetitions AND Block B isolated)",
-        f"- CROSSTALK-SUSPECT:      {len(crosstalk_suspect)} qubits {crosstalk_suspect}",
-        "  (Condition: Block A repeats > 0.05, but Block B isolated <= 0.05)",
-        f"- TRANSIENT DISAGREEMENTS: {len(transient)} qubits {transient}",
-        "  (Condition: status disagrees with 9 Oct baseline classification)",
-        "",
-        "2. STATISTICAL SIGNIFICANCE (POOLED BLOCK A)",
-        "-" * 85,
-        f"- Excess > 0.01: {count_gt_001} qubits total | {survive_2se_001} clear 2-SE margin",
-        f"- Excess > 0.02: {count_gt_002} qubits total | {survive_2se_002} clear 2-SE margin",
-        f"- Excess > 0.05: {count_gt_005} qubits total | {survive_2se_005} clear 2-SE margin",
-        "",
-        "3. DETAILED TOP-15 QUBIT AUDIT TABLE",
-        "-" * 85,
-        f"{'Qubit':<6} {'BaseSub':<9} {'Type':<8} {'Exc A0':<9} {'Exc A1':<9} {'Exc B':<9} {'Exc C':<9} {'Status':<16}",
-        "-" * 85
-    ]
+    lines = []
+    lines.append("=" * 85)
+    if is_fake:
+        lines.append("[OFFLINE SYNTHETIC - NOT EVIDENCE]")
+    lines.append("ENHANCED P1 (v2) CHARACTERIZATION AUDIT & PERSISTENCE REPORT")
+    lines.append("=" * 85)
+    lines.append(f"Characterization File:    {p1v2_file}")
+    lines.append(f"Backend:                  {backend} ({total_qubits} qubits audited)")
+    lines.append(f"Calibration Timestamp:    {cal_ts}")
+    lines.append(f"Execution Timestamp:      {exec_ts}")
+    lines.append(f"Shots per PUB:            {shots} (pooled A shots: {shots * 2})")
+    lines.append(f"Baseline Subtraction:     {baseline_label}")
+    lines.append("")
+    lines.append("1. PERSISTENCE & CLASSIFICATION SUMMARY")
+    lines.append("-" * 85)
+    lines.append(f"- PERSISTENT HOT QUBITS:  {len(persistent_hot)} qubits {persistent_hot}")
+    lines.append("  (Condition: excess_v2 > 0.05 in BOTH Block A repetitions AND Block B isolated)")
+    lines.append(f"- CROSSTALK-SUSPECT:      {len(crosstalk_suspect)} qubits {crosstalk_suspect}")
+    lines.append("  (Condition: Block A repeats > 0.05, but Block B isolated <= 0.05)")
+    if is_fake:
+        lines.append("- TRANSIENT DISAGREEMENTS: not applicable on a fake backend")
+    else:
+        lines.append(f"- TRANSIENT DISAGREEMENTS: {len(transient)} qubits {transient}")
+        lines.append("  (Condition: status disagrees with 9 Oct baseline classification)")
+    lines.append("")
+    lines.append("2. STATISTICAL SIGNIFICANCE (POOLED BLOCK A)")
+    lines.append("-" * 85)
+    if is_fake:
+        lines.append("  Statistical significance counts not applicable on a fake backend")
+    else:
+        lines.append(f"- Excess > 0.01: {count_gt_001} qubits total | {survive_2se_001} clear 2-SE margin")
+        lines.append(f"- Excess > 0.02: {count_gt_002} qubits total | {survive_2se_002} clear 2-SE margin")
+        lines.append(f"- Excess > 0.05: {count_gt_005} qubits total | {survive_2se_005} clear 2-SE margin")
+    lines.append("")
+    lines.append("3. DETAILED TOP-15 QUBIT AUDIT TABLE")
+    lines.append("-" * 85)
+    lines.append(f"{'Qubit':<6} {'BaseSub':<9} {'Type':<8} {'Exc A0':<9} {'Exc A1':<9} {'Exc B':<9} {'Exc C':<9} {'Status':<16}")
+    lines.append("-" * 85)
 
     for item in results_table[:15]:
-        sub_type = "ro_fall" if item["fallback"] else "p10_cal"
         exc_b_str = f"{item['exc_b_mean']:.4f}" if item['exc_b_mean'] is not None else "N/A"
         exc_c_str = f"{item['exc_c']:.4f}" if item['exc_c'] is not None else "N/A"
         
@@ -234,11 +273,11 @@ def analyze_p1_v2(p1v2_file=None, base_p1_file="results/hardware/p1_ibm_marrakes
         else:
             status_tags.append("CLEAN")
 
-        if item["is_transient"]:
+        if item["is_transient"] and not is_fake:
             status_tags.append("TRANSIENT")
 
         lines.append(
-            f"{item['qubit']:<6} {item['sub_val']:<9.4f} {sub_type:<8} "
+            f"{item['qubit']:<6} {item['sub_val']:<9.4f} {item['sub_type']:<8} "
             f"{item['exc_a0']:<9.4f} {item['exc_a1']:<9.4f} {exc_b_str:<9} {exc_c_str:<9} {','.join(status_tags):<16}"
         )
 
@@ -250,6 +289,9 @@ def analyze_p1_v2(p1v2_file=None, base_p1_file="results/hardware/p1_ibm_marrakes
 
     print(f"p1v2 analysis report written to {out_p}")
     return {
+        "backend": backend,
+        "is_fake": is_fake,
+        "p1v2_file": str(p1v2_file),
         "persistent_hot": persistent_hot,
         "crosstalk_suspect": crosstalk_suspect,
         "transient": transient,

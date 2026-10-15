@@ -1,12 +1,13 @@
 =====================================================================================
+[OFFLINE SYNTHETIC - NOT EVIDENCE]
 ENHANCED P1 (v2) CHARACTERIZATION AUDIT & PERSISTENCE REPORT
 =====================================================================================
-Characterization File:    results/hardware_v2\p1v2_fake_marrakesh_20261015T185450_482702_0000.json
+Characterization File:    results/hardware_v2/offline_rehearsal/p1v2_fake_marrakesh_20261015T185450_482702_0000.json
 Backend:                  fake_marrakesh (156 qubits audited)
 Calibration Timestamp:    2025-02-26T14:52:45-05:00
 Execution Timestamp:      2026-10-15T18:54:50.482702+00:00
 Shots per PUB:            4096 (pooled A shots: 8192)
-Calibrated Asymmetry:     UNEXPOSED (fell back to symmetric readout error ro)
+Baseline Subtraction:     isolated control qubits median (0.0198)
 
 1. PERSISTENCE & CLASSIFICATION SUMMARY
 -------------------------------------------------------------------------------------
@@ -14,32 +15,29 @@ Calibrated Asymmetry:     UNEXPOSED (fell back to symmetric readout error ro)
   (Condition: excess_v2 > 0.05 in BOTH Block A repetitions AND Block B isolated)
 - CROSSTALK-SUSPECT:      0 qubits []
   (Condition: Block A repeats > 0.05, but Block B isolated <= 0.05)
-- TRANSIENT DISAGREEMENTS: 7 qubits [11, 22, 23, 26, 94, 125, 145]
-  (Condition: status disagrees with 9 Oct baseline classification)
+- TRANSIENT DISAGREEMENTS: not applicable on a fake backend
 
 2. STATISTICAL SIGNIFICANCE (POOLED BLOCK A)
 -------------------------------------------------------------------------------------
-- Excess > 0.01: 82 qubits total | 45 clear 2-SE margin
-- Excess > 0.02: 0 qubits total | 0 clear 2-SE margin
-- Excess > 0.05: 0 qubits total | 0 clear 2-SE margin
+  Statistical significance counts not applicable on a fake backend
 
 3. DETAILED TOP-15 QUBIT AUDIT TABLE
 -------------------------------------------------------------------------------------
 Qubit  BaseSub   Type     Exc A0    Exc A1    Exc B     Exc C     Status          
 -------------------------------------------------------------------------------------
-6      0.0027    ro_fall  0.0171    0.0171    N/A       N/A       CLEAN           
-38     0.0027    ro_fall  0.0171    0.0171    N/A       N/A       CLEAN           
-89     0.0027    ro_fall  0.0171    0.0171    N/A       N/A       CLEAN           
-65     0.0029    ro_fall  0.0168    0.0168    N/A       N/A       CLEAN           
-112    0.0032    ro_fall  0.0166    0.0166    N/A       N/A       CLEAN           
-44     0.0034    ro_fall  0.0164    0.0164    N/A       N/A       CLEAN           
-45     0.0034    ro_fall  0.0164    0.0164    N/A       N/A       CLEAN           
-12     0.0039    ro_fall  0.0159    0.0159    N/A       N/A       CLEAN           
-14     0.0039    ro_fall  0.0159    0.0159    N/A       N/A       CLEAN           
-95     0.0039    ro_fall  0.0159    0.0159    0.0159    N/A       CLEAN           
-98     0.0039    ro_fall  0.0159    0.0159    N/A       N/A       CLEAN           
-136    0.0039    ro_fall  0.0159    0.0159    N/A       N/A       CLEAN           
-139    0.0039    ro_fall  0.0159    0.0159    N/A       N/A       CLEAN           
-2      0.0042    ro_fall  0.0156    0.0156    N/A       N/A       CLEAN           
-29     0.0042    ro_fall  0.0156    0.0156    N/A       N/A       CLEAN           
+0      0.0198    ctrl_med 0.0000    0.0000    0.0000    N/A       CLEAN           
+1      0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+2      0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+3      0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+4      0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+5      0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+6      0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+7      0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+8      0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+9      0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+10     0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+11     0.0198    ctrl_med 0.0000    0.0000    0.0000    N/A       CLEAN           
+12     0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+13     0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
+14     0.0198    ctrl_med 0.0000    0.0000    N/A       N/A       CLEAN           
 =====================================================================================

@@ -1,16 +1,16 @@
-================================================================================
-HARDWARE EXTRA CONFOUNDING CLASSIFICATION TABLE (CHECKPOINT S)
+===============================================================================================
+HARDWARE EXTRA COMPARATOR & CONFOUNDING TABLE (CHECKPOINT V / v2.1)
 Backend: fake_marrakesh | Calibration: 2025-02-26T14:52:45-05:00
-================================================================================
-Region   Bench    hot_2q    clean_2q   diff_2q   Conf?   Reason
---------------------------------------------------------------------------------
-R1       ghz      4         8          +4        NO      None (|diff_2q| <= 4)
-R1       bv       8         8          +0        NO      None (|diff_2q| <= 4)
-R1       mirror   51        50         -1        NO      None (|diff_2q| <= 4)
-R2       ghz      5         4          -1        NO      None (|diff_2q| <= 4)
-R2       bv       2         8          +6        YES     |diff_2q|=6 > 4
-R2       mirror   54        49         -5        YES     |diff_2q|=5 > 4
-R3       ghz      4         4          +0        NO      None (|diff_2q| <= 4)
-R3       bv       5         8          +3        NO      None (|diff_2q| <= 4)
-R3       mirror   54        42         -12       YES     |diff_2q|=12 > 4
---------------------------------------------------------------------------------
+===============================================================================================
+Region  Bench   HOT ESP   CLN ESP   hot_2q  cln_2q  d2q    Status        Execution     Reason
+-----------------------------------------------------------------------------------------------
+R1      ghz     0.9238    0.8905    4       8       +4     UNMATCHABLE   NOT EXECUTED  No clean subgraph with ESP <= HOT within 0.03
+R1      bv      0.8941    0.8704    8       5       -3     PRIMARY       EXECUTED      Matched (|Delta 2Q| <= 4, ESP <= HOT and within 0.03)
+R1      mirror  0.6658    0.7174    51      50      -1     UNMATCHABLE   NOT EXECUTED  No clean subgraph with ESP <= HOT within 0.03
+R2      ghz     0.9202    0.9068    5       7       +2     PRIMARY       EXECUTED      Matched (|Delta 2Q| <= 4, ESP <= HOT and within 0.03)
+R2      bv      0.9132    0.8954    2       8       +6     CONFOUNDED    NOT EXECUTED  |Delta 2Q| > 4 for all clean subgraphs
+R2      mirror  0.6649    0.6190    54      58      +4     UNMATCHABLE   NOT EXECUTED  No clean subgraph with ESP <= HOT within 0.03
+R3      ghz     0.8339    0.9313    4       4       +0     UNMATCHABLE   NOT EXECUTED  No clean subgraph with ESP <= HOT within 0.03
+R3      bv      0.7808    0.9186    5       8       +3     UNMATCHABLE   NOT EXECUTED  No clean subgraph with ESP <= HOT within 0.03
+R3      mirror  0.4529    0.7301    54      58      +4     UNMATCHABLE   NOT EXECUTED  No clean subgraph with ESP <= HOT within 0.03
+-----------------------------------------------------------------------------------------------

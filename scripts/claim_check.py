@@ -518,14 +518,24 @@ def audit_analysis_exposure_and_esp(readme_content: str, analysis_dir="results/a
                 if not re.search(r"\b(?:no|not|cannot|neither|fails?\s+to|without|zero|lacks?|unsupported)\b", sent_l):
                     return False, f"Forbidden claim that thermal term is supported by hardware: '{sent.strip()}'"
 
-    # Rule 15 (U): Refuse unqualified "thermal qubit 125" claims
-    for line in readme_content.splitlines():
-        for sent in re.split(r'[\.\;\n]', line):
-            sent_l = sent.lower()
-            if "125" in sent_l and re.search(r"\bthermal\s+qubit\s+125\b|\bqubit\s+125\b.*?\b(?:is|as)\s+(?:a\s+)?thermal\s+qubit\b", sent_l):
-                qualifiers = ["candidate", "unverified", "suspected", "defect", "tls", "apparent", "nominal", "anomaly", "requires persistence"]
-                if not any(q in sent_l for q in qualifiers):
-                    return False, f"Forbidden unqualified 'thermal qubit 125' claim: '{sent.strip()}'"
+    # Rule 15 (U/V): Refuse unqualified "thermal qubit 125" claims in README and analysis files
+    texts_to_check = [("README.md", readme_content)]
+    for a_dir in ["results/analysis", "results/analysis_v2"]:
+        if os.path.exists(a_dir):
+            for fname in os.listdir(a_dir):
+                if fname.endswith(".txt"):
+                    fpath = os.path.join(a_dir, fname)
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        texts_to_check.append((fpath, f.read()))
+
+    for src_name, content in texts_to_check:
+        for line in content.splitlines():
+            for sent in re.split(r'[\.\;\n]', line):
+                sent_l = sent.lower()
+                if "125" in sent_l and re.search(r"\bthermal\s+qubit\s+125\b|\bqubit\s+125\b.*?\b(?:is|as)\s+(?:a\s+)?thermal\s+qubit\b", sent_l):
+                    qualifiers = ["candidate", "unverified", "suspected", "defect", "tls", "apparent", "nominal", "anomaly", "requires persistence", "persistence result"]
+                    if not any(q in sent_l for q in qualifiers):
+                        return False, f"Forbidden unqualified 'thermal qubit 125' claim in {src_name}: '{sent.strip()}'"
 
     return True, "Analysis claims verified."
 

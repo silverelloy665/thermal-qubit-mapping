@@ -1,6 +1,6 @@
 # Thermal Qubit Mapping: Noise-Aware Mapping with Excited-State Population ($p_1$)
 
-[![Tests](https://img.shields.io/badge/tests-44%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-57%20passed-brightgreen.svg)]()
 [![Backend](https://img.shields.io/badge/IBM%20Quantum-ibm__marrakesh%20(156q)-blue.svg)]()
 [![Architecture](https://img.shields.io/badge/Architecture-Heron%20r2%20(CZ)-purple.svg)]()
 [![Budget](https://img.shields.io/badge/QPU%20Cap-350s%20(250s%20reserve)-orange.svg)]()
@@ -150,7 +150,7 @@ Thermal ESP fell below plain ESP on 3 of 4 benchmarks (GHZ-5: -3.30 pts, BV-5: -
 - **Baseline Comparative Performance vs Qiskit L3**:
   - At zero excess, ESP trails L3 by 8.0, 2.7, 7.5, and 8.8 pts (GHZ, BV, QFT, Mirror) on `FakeGuadalupeV2`.
   - In non-zero thermal excess regimes, thermal ESP beats L3 with a 95% bootstrap CI strictly greater than zero in only **1 of 72 hot cells** (GHZ-5, 2 hot qubits, $15\%$ excess: $+5.28\text{ pts}$, 95% CI $[+0.35, +9.81]$). By point estimate, thermal ESP beats L3 in **6 of 12 cells at 15% excess** (GHZ with 1, 2, 3 hot qubits; BV with 2, 3 hot qubits; QFT with 3 hot qubits); Mirror-5 never beats L3 across any parameter cell. The committed thermal_sweep.csv was generated before L3 transpile seeding; its L3 columns drifted by up to 0.07 pt in an unseeded rerun (Checkpoint K); seeded reruns reproduce the committed values on the tested cell (ghz, 2 hot, 0.15).
-- **Physical Prevalence of High-Thermal Regimes**: On `ibm_marrakesh`, only **4 of 156 qubits** exhibit $p_{1, \text{excess}} > 0.10$ (qubits 125, 22, 26, 11); qubit 125 has readout error 0.0096 and excess 0.41 (thermal excess), whereas exactly 5 qubits chip-wide exhibit readout error $> 0.20$ (qubits 82, 94, 102, 113, 130), of which 2 (qubits 94 and 130) are among the qubits flagged with apparent excess $> 0.01$ and are diagnosed as readout failures rather than thermal excitation. Consequently, regimes where thermal ESP provides definitive routing advantages over L3 are physically rare.
+- **Physical Prevalence of High-Thermal Regimes**: On `ibm_marrakesh`, only **4 of 156 qubits** exhibit $p_{1, \text{excess}} > 0.10$ (qubits 125, 22, 26, 11); qubit 125 has readout error 0.0096 and excess 0.41 (apparent excess; candidate hot qubit, likely TLS defect rather than thermal equilibrium), whereas exactly 5 qubits chip-wide exhibit readout error $> 0.20$ (qubits 82, 94, 102, 113, 130), of which 2 (qubits 94 and 130) are among the qubits flagged with apparent excess $> 0.01$ and are diagnosed as readout failures rather than thermal excitation. Consequently, regimes where thermal ESP provides definitive routing advantages over L3 are physically rare.
 - **Guadalupe Practical Detection First Crossings**: On the 16-qubit `FakeGuadalupeV2` model, thermal ESP achieves practical sensitivity ($\text{gain} \ge 0.5\text{ pt}$ and 95% bootstrap CI lower bound $> 0$) at first crossing:
   - **GHZ-5**: $p_{1, \text{excess}} = 0.005$ across 1, 2, and 3 hot qubits (+1.26 pts, +2.40 pts, +1.82 pts).
   - **BV-5**: $p_{1, \text{excess}} = 0.020$ (1 hot qubit, +1.50 pts), $0.050$ (2 hot qubits, +1.91 pts), and $0.005$ (3 hot qubits, +0.57 pts).

@@ -30,6 +30,7 @@ thermal:
 extra_backend: ibm_marrakesh     # fallback ibm_fez, fail if not in live list
 allowance_remaining_s: 279       # manual, dashboard 11 Oct 2026, 4m39s remain
 allowance_checked_at: "2026-10-16T00:15:00+05:30"  # manual entry verification timestamp
+thermal_arm_dashboard_seconds: "PENDING"  # manual entry
 reserve_s: 150                   # must stay unspent
 extra_run_cap_s: 110             # main run cap (estimate 3.0 s/circuit is conservative, measured 2.3 s earlier)
 hot_min_excess: 0.05
@@ -38,4 +39,3 @@ benchmarks_extra: [ghz, bv, mirror]
 shots: 8192
 repetitions: 2
 region_distance: 4               # d<=2 has no clean 5q subgraphs on heavy-hex (girth 6); d<=4 provides connected clean subgraphs
-

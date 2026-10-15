@@ -500,7 +500,7 @@ def test_hotspot_plan_hash_stability():
         plan = json.load(f)
 
     computed_h = compute_plan_hash(plan)
-    expected_h = "d046831b5a754c1b" + "a5d22d2c60fd7717" + "47c40425fc717d26" + "3b5f7d2bd8343848"
+    expected_h = "c9d9ce817ad27842" + "5a64895d3ffa4dec" + "9987c7d0a3b99213" + "cb5561ed2faf056a"
     assert computed_h == expected_h
 
 def test_hotspot_synthetic_analysis_known_answer(tmp_path):
@@ -1156,7 +1156,7 @@ def test_p1_limits_report_and_values():
     assert "Excess > 0.05: 7 qubits total; only 6 survive a 2-SE margin" in text
     assert "Qubit 125 P(1|0):             0.4214" in text
     assert "Qubit 125 P(0|1):             0.1333" in text
-    assert "two-level system (TLS) defect" in text
+    assert "cause undetermined; hypotheses not tested here: TLS" in text
 
 def test_measure_p1_v2_batches_distance_and_gates():
     """Verify measure_p1_v2 graph distance >= 3 on isolated batches and budget refusal gates."""
@@ -1284,6 +1284,169 @@ def test_claim_check_checkpoint_u_rules():
     good_q125 = prefix + "We examine candidate hot qubit 125 (suspected TLS defect rather than thermal equilibrium) under 2-SE margin."
     ok3, msg3 = audit_analysis_exposure_and_esp(good_q125)
     assert ok3, f"Expected qualified qubit 125 statement to pass, got: {msg3}"
+
+
+def test_newcombe_hybrid_score_ci_reference_values():
+    """Verify Wilson score and Newcombe hybrid-score CI against published reference values."""
+    from scripts.stat_utils import wilson_score_interval, newcombe_diff_ci, evaluate_cell_difference
+
+    # 1. Wilson score interval references
+    l1, u1 = wilson_score_interval(56, 70, confidence=0.95)
+    assert abs(l1 - 0.6917) < 0.002, f"Expected ~0.6917, got {l1}"
+    assert abs(u1 - 0.8770) < 0.002, f"Expected ~0.8770, got {u1}"
+
+    l2, u2 = wilson_score_interval(48, 80, confidence=0.95)
+    assert abs(l2 - 0.4902) < 0.002, f"Expected ~0.4902, got {l2}"
+    assert abs(u2 - 0.7000) < 0.002, f"Expected ~0.7000, got {u2}"
+
+    # 2. Newcombe difference CI (Method 10, Newcombe 1998 Table II)
+    # x1=56, n1=70 (p1=0.8); x2=48, n2=80 (p2=0.6); diff = +0.20
+    diff, ci_low, ci_high = newcombe_diff_ci(56, 70, 48, 80, confidence=0.95)
+    assert abs(diff - 0.2000) < 1e-4
+    assert abs(ci_low - 0.0524) < 0.002, f"Expected ~0.0524, got {ci_low}"
+    assert abs(ci_high - 0.3339) < 0.002, f"Expected ~0.3339, got {ci_high}"
+
+    # 3. Paired cell difference evaluation and rep stability check
+    res = evaluate_cell_difference(
+        clean_counts_rep0=7000, clean_shots_rep0=8192,
+        clean_counts_rep1=7050, clean_shots_rep1=8192,
+        hot_counts_rep0=6800, hot_shots_rep0=8192,
+        hot_counts_rep1=6750, hot_shots_rep1=8192,
+        confidence=0.95
+    )
+    assert res["diff_pooled"] > 0
+    assert res["newcombe_ci_low"] > 0
+    assert abs(res["clean_rep_drift"]) < 0.02
+    assert abs(res["hot_rep_drift"]) < 0.02
+    assert res["significant"]
+
+
+def test_esp_matched_comparator_rule():
+    """Verify ESP-matched comparator rule (prefers clean with ESP <= hot and within 0.03, |2Q diff| <= 4)."""
+    import json
+    from pathlib import Path
+
+    plan_path = Path("results/hardware_extra/plan.json")
+    assert plan_path.exists()
+    with open(plan_path, "r", encoding="utf-8") as f:
+        plan = json.load(f)
+
+    for reg in plan.get("regions", []):
+        for b_name, b_data in reg.get("benchmarks", {}).items():
+            if b_data.get("status") == "PRIMARY":
+                # Must satisfy:
+                # 1. ESP(clean) <= ESP(hot)
+                assert b_data["clean_esp"] <= b_data["hot_esp"] + 1e-6
+                # 2. Within 0.03 of ESP(hot)
+                assert b_data["clean_esp"] >= b_data["hot_esp"] - 0.03 - 1e-6
+                # 3. |Delta 2Q| <= 4
+                assert abs(b_data["diff_2q"]) <= 4
+                assert b_data.get("executed", True)
+
+
+def test_unmatchable_handling_drops_from_execution():
+    """Verify UNMATCHABLE cells are dropped from execution and excluded from circuit planning."""
+    import json
+    from pathlib import Path
+    plan_path = Path("results/hardware_extra/plan.json")
+    assert plan_path.exists()
+    with open(plan_path, "r", encoding="utf-8") as f:
+        plan = json.load(f)
+
+    unmatchable_count = 0
+    primary_count = 0
+    for reg in plan.get("regions", []):
+        for b_name, b_val in reg.get("benchmarks", {}).items():
+            if b_val.get("status") == "UNMATCHABLE":
+                unmatchable_count += 1
+                assert not b_val.get("executed", False)
+            elif b_val.get("status") == "PRIMARY":
+                primary_count += 1
+                assert b_val.get("executed", True)
+
+    assert unmatchable_count > 0, "Expected at least one unmatchable cell on heavy-hex"
+    # Verify circuit_count_before equals 2 * primary_count (each primary has 1 HOT + 1 CLEAN circuit)
+    assert plan.get("circuit_count_before") == 2 * primary_count
+
+
+def test_minimum_primary_cells_inconclusive_flag():
+    """Verify that fewer than 4 primary cells pre-declares result INCONCLUSIVE (underpowered)."""
+    import json
+    from pathlib import Path
+    plan_path = Path("results/hardware_extra/plan.json")
+    with open(plan_path, "r", encoding="utf-8") as f:
+        plan = json.load(f)
+
+    primary_count = plan.get("primary_cell_count", 0)
+    power_status = plan.get("power_status", "")
+    if primary_count < 4:
+        assert "INCONCLUSIVE" in power_status
+        assert "underpowered" in power_status
+    else:
+        assert "ADEQUATE" in power_status
+
+
+def test_stale_allowance_live_refusal_and_offline_warning(capsys):
+    """Verify stale allowance (>24h) refuses live execution but only warns offline."""
+    import argparse
+    import pytest
+    from scripts.run_hotspot_hw import run_hotspot
+    import yaml
+
+    stale_ts = "2020-01-01T00:00:00+00:00"
+    raw_config = Path("config.yaml").read_text(encoding="utf-8")
+    conf_orig = yaml.safe_load(raw_config)
+
+    try:
+        conf_stale = dict(conf_orig, allowance_checked_at=stale_ts)
+        with open("config.yaml", "w", encoding="utf-8") as f:
+            yaml.safe_dump(conf_stale, f)
+
+        # In offline mode: should run without raising, but print WARNING
+        args_offline = argparse.Namespace(
+            target="fake", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False
+        )
+        run_hotspot(args_offline)
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.out or "older than 24" in captured.out
+
+        # In live mode: must raise ValueError
+        args_live = argparse.Namespace(
+            target="live", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False
+        )
+        with pytest.raises(ValueError, match="older than 24 hours"):
+            run_hotspot(args_live)
+    finally:
+        Path("config.yaml").write_text(raw_config, encoding="utf-8")
+
+
+def test_offline_synthetic_banner_and_fake_file_refusal():
+    """Verify offline summary banner on fake backend and refusal of fake p1v2 in live mode."""
+    import argparse
+    import pytest
+    from pathlib import Path
+    from scripts.analyze_p1_v2 import analyze_p1_v2
+    from scripts.run_hotspot_hw import run_hotspot
+
+    # 1. Offline synthetic banner in p1v2_summary.txt
+    summary_path = Path("results/analysis_v2/p1v2_summary.txt")
+    assert summary_path.exists()
+    text = summary_path.read_text(encoding="utf-8")
+    assert "[OFFLINE SYNTHETIC - NOT EVIDENCE]" in text
+    assert "not applicable on a fake backend" in text
+
+    # 2. Refusal to build live plan from a fake p1v2 file
+    rehearsal_file = "results/hardware_v2/offline_rehearsal/p1v2_fake_marrakesh_20261015T185450_482702_0000.json"
+    res = analyze_p1_v2(rehearsal_file)
+    assert res.get("is_fake", False)
+
+    # Calling run_hotspot with live target and rehearsal file must be refused
+    args_live = argparse.Namespace(
+        target="live", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False
+    )
+    with pytest.raises(ValueError, match="No p1v2 characterization file found|Cannot build live plan from a fake"):
+        run_hotspot(args_live)
+
 
 
 
