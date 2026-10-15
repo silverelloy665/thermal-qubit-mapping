@@ -24,6 +24,8 @@ from qiskit_ibm_runtime import SamplerV2 as Sampler
 
 # Ensure project root is on sys.path
 sys.path.append(str(Path(__file__).parent.parent))
+import yaml
+from scripts.budget_table import compute_z4_cumulative_budget, format_z4_budget_table
 from src.noise_model.profile import load_config
 from src.benchmarks.circuits import get_ghz, get_bv_n, get_mirror
 from src.metrics.esp import esp_standard, esp_thermal, count_native_2q
@@ -511,7 +513,21 @@ def write_confounding_table(plan_dict, out_path="results/hardware_extra/confound
     return table_text
 
 def run_hotspot(args):
-    config = load_config()
+    cfg_override = getattr(args, "config", None)
+    if cfg_override:
+        with open(cfg_override, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+    else:
+        config = load_config()
+
+    # Backend parameterization & refusal (Checkpoint Z2)
+    backend_arg = getattr(args, "backend", None)
+    if backend_arg is not None:
+        if backend_arg in ["ibm_fez", "fake_fez"]:
+            raise ValueError("The pre-registered hot-spot stress test is defined on ibm_marrakesh; cross-backend execution refused under PREREGISTRATION_v2_4.")
+        if backend_arg not in ["ibm_marrakesh", "fake_marrakesh"]:
+            raise ValueError(f"The pre-registered hot-spot stress test is defined on ibm_marrakesh; backend '{backend_arg}' refused under PREREGISTRATION_v2_4.")
+
     shots = int(config.get("shots", 8192))
     repetitions = int(config.get("repetitions", 2))
     allowance_remaining = float(config.get("allowance_remaining_s", 279.0))
@@ -568,7 +584,7 @@ def run_hotspot(args):
 
     # Step 1.7: Fast early refusal gates for --execute mode
     pilot_scale_path = Path("results/hardware_extra/pilot_scale.json")
-    plan_path = Path("results/hardware_extra/plan.json")
+    plan_path = Path(getattr(args, "out_plan", "results/hardware_extra/plan.json"))
 
     if args.execute:
         # 1. Pilot file existence and validation
@@ -867,7 +883,7 @@ def run_hotspot(args):
     current_hashes = [hash_circuit(c) for c in unique_circuits]
 
     # Save plan.json
-    plan_path = Path("results/hardware_extra/plan.json")
+    plan_path = Path(getattr(args, "out_plan", "results/hardware_extra/plan.json"))
     plan_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Serializable region layout data
@@ -939,14 +955,24 @@ def run_hotspot(args):
     if not args.execute and not args.pilot:
         with open(plan_path, "w", encoding="utf-8") as f:
             json.dump(plan_dict, f, indent=2)
-        write_confounding_table(plan_dict)
+        conf_out = getattr(args, "out_confounding", "results/hardware_extra/confounding_table.txt")
+        write_confounding_table(plan_dict, out_path=conf_out)
 
     # Generate printable summary report
     spendable_s = allowance_remaining - reserve_s
     step_status = compute_priority_step_status(
         spendable_s, is_allowance_stale, pilot_usage, p1v2_estimate_seconds, total_estimate_seconds
     )
+    z4_budget = compute_z4_cumulative_budget(
+        config,
+        persistent_count=len(persistent_hot_qubits) if persistent_hot_qubits is not None else None,
+        live_pilot_marrakesh=pilot_usage,
+    )
+    z4_table_str = format_z4_budget_table(z4_budget)
+
     lines = []
+    lines.append(z4_table_str)
+    lines.append("")
     lines.append("=" * 80)
     if target_mode != "live":
         lines.append("[OFFLINE DRY RUN ON FakeMarrakesh - NOT EVIDENCE - DO NOT CITE]")
@@ -1046,7 +1072,7 @@ def run_hotspot(args):
     lines.append("=" * 80)
 
     summary_text = "\n".join(lines) + "\n"
-    summary_path = Path("results/hardware_extra/hotspot_plan_summary.txt")
+    summary_path = Path(getattr(args, "out_summary", "results/hardware_extra/hotspot_plan_summary.txt"))
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write(summary_text)
 
@@ -1240,6 +1266,8 @@ def main():
     parser.add_argument("--local", action="store_true", help="Run locally using FakeMarrakesh without submitting to live QPU")
     parser.add_argument("--strict-d2", action="store_true", help="Strictly enforce distance <= 2 (dropping regions with no clean 5q subgraphs)")
     parser.add_argument("--descriptive", action="store_true", help="Allow execution when primary cell count < 4; labels all output DESCRIPTIVE, NOT CONFIRMATORY")
+    parser.add_argument("--config", type=str, default=None, help="Path to config.yaml (default: config.yaml)")
+    parser.add_argument("--backend", type=str, default=None, help="Target backend name (only ibm_marrakesh permitted)")
     args = parser.parse_args()
 
     run_hotspot(args)

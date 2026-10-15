@@ -537,6 +537,17 @@ def audit_analysis_exposure_and_esp(readme_content: str, analysis_dir="results/a
                     if not any(q in sent_l for q in qualifiers):
                         return False, f"Forbidden unqualified 'thermal qubit 125' claim in {src_name}: '{sent.strip()}'"
 
+    # Rule 16 (Z): Refuse Fez mentions in README unless backend_compare.txt exists and contains "two devices" and "descriptive"
+    if re.search(r"\b(?:ibm_fez|fez)\b", readme_content, re.IGNORECASE):
+        backend_compare_path = "results/analysis_v2/backend_compare.txt"
+        if not os.path.exists(backend_compare_path):
+            return False, f"README mentions Fez findings, but {backend_compare_path} does not exist."
+        for line in readme_content.splitlines():
+            if re.search(r"\b(?:ibm_fez|fez)\b", line, re.IGNORECASE):
+                line_l = line.lower()
+                if "two devices" not in line_l or "descriptive" not in line_l:
+                    return False, f"README mention of Fez must contain both 'two devices' and 'descriptive': '{line.strip()}'"
+
     return True, "Analysis claims verified."
 
 

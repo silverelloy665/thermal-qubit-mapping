@@ -1,0 +1,105 @@
+================================================================================
+PRE-REGISTRATION SPECIFICATION: SECOND-DEVICE CHARACTERIZATION ADDENDUM (VERSION 2.4 - FEZ)
+Device: IBM Heron r2 (ibm_fez, 156 qubits)
+Status: DESCRIPTIVE ADDENDUM TO PREREGISTRATION_v2_4.txt (FROZEN PRIOR TO EXECUTION)
+================================================================================
+
+1. SCIENTIFIC PURPOSE & BOUNDARIES
+--------------------------------------------------------------------------------
+Purpose:
+  To assess the replication of the PREVALENCE and PERSISTENCE of measured-vs-calibrated
+  P(1|0) anomalies on a second 156-qubit IBM Heron processor (ibm_fez).
+
+Explicit Non-Claims:
+  - This addendum is NOT an execution or replication of the algorithmic hot-spot stress test.
+  - No hot-spot layout plan can or will be constructed for ibm_fez (run_hotspot_hw remains
+    strictly pinned to ibm_marrakesh).
+  - No claim regarding dilution refrigerator thermal physics is made.
+  - No hypothesis is confirmed or refuted; all reporting is strictly descriptive.
+
+Earlier Day Comparison:
+  - ibm_fez baseline: "not applicable: no earlier fez baseline" (no historical characterization
+    file exists in the repository for ibm_fez prior to this run).
+
+2. TWO-STAGE EXPERIMENTAL PROTOCOL (measure_p1_v2.py)
+--------------------------------------------------------------------------------
+Stage 1: Chip-Wide Survey (--stage survey)
+  - Execution:
+      All 156 physical qubits measured simultaneously.
+      Two preparations: prep|0> and prep|1>.
+      Two repetitions: rep0 and rep1 as separate PUBs (4 PUBs total).
+      Shots per PUB: 4096.
+  - Output Artifact:
+      results/hardware_v2/p1v2_survey_ibm_fez_<timestamp>.json
+  - Metric Calculation:
+      excess_v2 = P(1|0)_measured - calibrated prob_meas1_prep0 (if exposed by backend)
+      Fallback: excess_v2 = P(1|0)_measured - median_{c in CONTROL}( P(1|0)_measured,c )
+      Every artifact explicitly records the subtraction method label.
+
+Stage 2: Graph-Isolated Confirmation (--stage confirm --from-survey <file>)
+  - Candidate Selection from Stage 1 Survey:
+      1. Candidate Hot: Top 10 qubits ranked by survey excess_v2 satisfying:
+           (a) Calibrated readout error ro <= 0.20
+           (b) Survey excess_v2 > 0.05 in BOTH rep0 AND rep1.
+         (If fewer than 10 qualify, take all qualifying qubits).
+      2. CONTROL: Exactly 8 qubits spread topologically across the lattice with:
+           (a) Survey excess_v2 <= 0.0
+           (b) Calibrated readout error ro <= 0.02.
+  - Measurement:
+      Graph-isolated measurement on the combined target set (HOT + CONTROL).
+      Shortest graph distance between simultaneously measured qubits >= 3 (distance rule).
+      Partitioned into isolated batches using BFS/graph coloring.
+      Two repetitions x two preps (|0>, |1>) per batch at 4096 shots.
+  - Output Artifact:
+      results/hardware_v2/p1v2_confirm_ibm_fez_<timestamp>.json
+  - Confirmation Refusal Gates:
+      Refuses execution if the survey file:
+        (a) is missing or unreadable
+        (b) was generated on a backend other than the target backend
+        (c) has a calibration timestamp different from the live target
+        (d) has an execution timestamp older than 24 hours.
+
+3. PERSISTENCE CLASSIFICATION RULE
+--------------------------------------------------------------------------------
+The v2.4 persistence rule is applied across Stage 1 and Stage 2:
+  A qubit is classified as PERSISTENT HOT on ibm_fez if and only if:
+    1. excess_v2 > 0.05 in BOTH simultaneous survey repetitions (rep0 AND rep1).
+    2. excess_v2 > 0.05 in graph-isolated confirmation measurement (distance >= 3).
+    3. Calibrated readout error ro <= 0.20.
+
+4. PILOT SCALE & REFUSAL SAFETY PER BACKEND
+--------------------------------------------------------------------------------
+  - Dedicated Pilot Path:
+      results/hardware_extra/pilot_scale_ibm_fez.json
+  - Strict Backend Isolation:
+      Pilot scale files are strictly validated against the target backend name.
+      A pilot file generated on ibm_marrakesh is rejected by ibm_fez, and vice versa.
+  - All 5 refusal gates (local job id, fake target, backend mismatch, missing calibration,
+    >24h age) apply independently to ibm_fez.
+
+5. OFFLINE CROSS-DEVICE COMPARISON (scripts/compare_backends_p1.py)
+--------------------------------------------------------------------------------
+Inputs:
+  - Marrakesh p1v2 JSON (or committed 9 Oct single snapshot)
+  - Fez Stage 1 Survey JSON
+  - Fez Stage 2 Confirm JSON (optional)
+
+Output Artifact:
+  results/analysis_v2/backend_compare.txt
+
+Mandatory Header Banner:
+  "DESCRIPTIVE, TWO DEVICES, ONE DAY EACH - NOT A HYPOTHESIS TEST"
+
+Methodological Transparency:
+  If the Marrakesh input is the committed 9 Oct file, the report explicitly states:
+  "snapshot vs repeated, not like for like".
+
+Reported Metrics (per backend):
+  1. Counts of excess_v2 > 0.01, > 0.02, and > 0.05.
+  2. Number of qubits clearing a 2-SE binomial threshold (excess_v2 > 2 * sqrt(p(1-p)/N)).
+  3. Number of qubits passing the persistence rule (or "not measured" if confirm data absent).
+  4. Median measured-average-readout error vs calibrated readout error:
+       (P(1|0) + P(0|1)) / 2 vs prob_meas0_prep1 / readout_error.
+  5. Fraction of qubits where P(0|1) > P(1|0) (readout asymmetry polarity).
+================================================================================
+

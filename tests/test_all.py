@@ -1387,7 +1387,7 @@ def test_minimum_primary_cells_inconclusive_flag():
         assert "ADEQUATE" in power_status
 
 
-def test_stale_allowance_live_refusal_and_offline_warning(capsys):
+def test_stale_allowance_live_refusal_and_offline_warning(capsys, tmp_path):
     """Verify stale allowance (>24h) refuses live execution but only warns offline."""
     import argparse
     import pytest
@@ -1397,31 +1397,31 @@ def test_stale_allowance_live_refusal_and_offline_warning(capsys):
     stale_ts = "2020-01-01T00:00:00+00:00"
     raw_config = Path("config.yaml").read_text(encoding="utf-8")
     conf_orig = yaml.safe_load(raw_config)
+    conf_stale = dict(conf_orig, allowance_checked_at=stale_ts)
+    tmp_config = tmp_path / "config_stale.yaml"
+    tmp_config.write_text(yaml.safe_dump(conf_stale), encoding="utf-8")
 
-    try:
-        conf_stale = dict(conf_orig, allowance_checked_at=stale_ts)
-        with open("config.yaml", "w", encoding="utf-8") as f:
-            yaml.safe_dump(conf_stale, f)
+    # In offline mode: should run without raising, but print WARNING
+    args_offline = argparse.Namespace(
+        target="fake", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False,
+        config=str(tmp_config), out_plan=str(tmp_path / "plan.json"), out_summary=str(tmp_path / "summary.txt"),
+        out_confounding=str(tmp_path / "confounding_table.txt")
+    )
+    run_hotspot(args_offline)
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.out or "older than 24" in captured.out
 
-        # In offline mode: should run without raising, but print WARNING
-        args_offline = argparse.Namespace(
-            target="fake", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False
-        )
-        run_hotspot(args_offline)
-        captured = capsys.readouterr()
-        assert "WARNING" in captured.out or "older than 24" in captured.out
-
-        # In live mode: must raise ValueError
-        args_live = argparse.Namespace(
-            target="live", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False
-        )
-        with pytest.raises(ValueError, match="older than 24 hours"):
-            run_hotspot(args_live)
-    finally:
-        Path("config.yaml").write_text(raw_config, encoding="utf-8")
+    # In live mode: must raise ValueError
+    args_live = argparse.Namespace(
+        target="live", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False,
+        config=str(tmp_config), out_plan=str(tmp_path / "plan.json"), out_summary=str(tmp_path / "summary.txt"),
+        out_confounding=str(tmp_path / "confounding_table.txt")
+    )
+    with pytest.raises(ValueError, match="older than 24 hours"):
+        run_hotspot(args_live)
 
 
-def test_offline_synthetic_banner_and_fake_file_refusal():
+def test_offline_synthetic_banner_and_fake_file_refusal(tmp_path):
     """Verify offline summary banner on fake backend and refusal of fake p1v2 in live mode."""
     import argparse
     import pytest
@@ -1446,15 +1446,14 @@ def test_offline_synthetic_banner_and_fake_file_refusal():
     from datetime import datetime, timezone
     raw_cfg = Path("config.yaml").read_text(encoding="utf-8")
     fresh_cfg = dict(yaml.safe_load(raw_cfg), allowance_checked_at=datetime.now(timezone.utc).isoformat())
-    try:
-        Path("config.yaml").write_text(yaml.safe_dump(fresh_cfg), encoding="utf-8")
-        args_live = argparse.Namespace(
-            target="live", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False
-        )
-        with pytest.raises(ValueError, match="No p1v2 characterization file found|Cannot build live plan from a fake"):
-            run_hotspot(args_live)
-    finally:
-        Path("config.yaml").write_text(raw_cfg, encoding="utf-8")
+    tmp_cfg = tmp_path / "config_fresh.yaml"
+    tmp_cfg.write_text(yaml.safe_dump(fresh_cfg), encoding="utf-8")
+
+    args_live = argparse.Namespace(
+        target="live", dry_run=True, execute=False, pilot=False, approve_seconds=None, local=False, strict_d2=False, config=str(tmp_cfg)
+    )
+    with pytest.raises(ValueError, match="No p1v2 characterization file found|Cannot build live plan from a fake"):
+        run_hotspot(args_live)
 
 
 def test_analyze_hotspot_synthetic_all_outcomes(tmp_path):
@@ -2038,6 +2037,254 @@ def test_checkpoint_y6_budget_priority_step_gating():
     assert res_all_go["step1_pilot"][0] == "GO"
     assert res_all_go["step2_p1v2"][0] == "GO"
     assert res_all_go["step3_plan"][0] == "GO"
+
+
+def test_config_yaml_immutability():
+    """Z1: Assert config.yaml sha256 hash matches the frozen repository value."""
+    import hashlib
+    content = Path("config.yaml").read_bytes()
+    current_hash = hashlib.sha256(content).hexdigest()
+    expected_hash = "".join([
+        "ca16d7824b0f1c82",
+        "02c513cda2180186",
+        "cd055b7999e90cf5",
+        "b6c96cf444abddfa"
+    ])
+    assert current_hash == expected_hash, f"config.yaml has been mutated! hash={current_hash}"
+
+
+def test_z4_cumulative_budget_scenarios():
+    """Z4: Unit test cumulative budget priority table under all key operational scenarios."""
+    from scripts.budget_table import compute_z4_cumulative_budget, format_z4_budget_table
+    from datetime import datetime, timezone, timedelta
+
+    fresh_ts = datetime.now(timezone.utc).isoformat()
+    stale_ts = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+
+    # Scenario 1: Stale allowance (>24h) -> all lines NO-GO (STALE)
+    cfg_stale = {"allowance_remaining_s": 500.0, "reserve_s": 150.0, "allowance_checked_at": stale_ts}
+    res_stale = compute_z4_cumulative_budget(cfg_stale)
+    assert res_stale["is_allowance_stale"] is True
+    for r in res_stale["rows"]:
+        assert r["status"] == "NO-GO (STALE)"
+    table_stale = format_z4_budget_table(res_stale)
+    assert "WARNING: >24h STALE" in table_stale
+
+    # Scenario 2: Fresh, insufficient allowance (spendable = 50.0 s, where line 1 is 3s, line 2 cumul 75s > 50s)
+    cfg_low = {"allowance_remaining_s": 200.0, "reserve_s": 150.0, "allowance_checked_at": fresh_ts}
+    res_low = compute_z4_cumulative_budget(cfg_low)
+    assert res_low["spendable_s"] == 50.0
+    assert res_low["rows"][0]["status"] == "GO"       # 3.0 s <= 50.0 s
+    assert res_low["rows"][1]["status"] == "NO-GO"    # 75.0 s > 50.0 s
+    assert res_low["rows"][2]["status"] == "NO-GO"
+
+    # Scenario 3: Fresh, sufficient allowance without stopping rule (spendable = 92.0 s: line 1,2 GO; line 3 NO-GO)
+    cfg_92 = {"allowance_remaining_s": 242.0, "reserve_s": 150.0, "allowance_checked_at": fresh_ts}
+    res_92 = compute_z4_cumulative_budget(cfg_92, persistent_count=2)
+    assert res_92["spendable_s"] == 92.0
+    assert res_92["rows"][0]["status"] == "GO"       # 3.0 s
+    assert res_92["rows"][1]["status"] == "GO"       # 75.0 s
+    assert res_92["rows"][2]["status"] == "NO-GO"    # 111.0 s > 92.0 s
+    assert res_92["rows"][3]["status"] == "NO-GO"
+
+    # Scenario 4: Fresh, stopping rule fires (persistent_count < 1 -> line 3 dropped)
+    # Line 3 becomes DROPPED, cumulative shifts down: line 4 cumul 78.0s <= 92s (GO), line 5 cumul 90.0s <= 92s (GO), line 6 138.0s > 92s (NO-GO)
+    res_stop = compute_z4_cumulative_budget(cfg_92, persistent_count=0)
+    assert res_stop["stopping_rule_fired"] is True
+    assert res_stop["rows"][0]["status"] == "GO"
+    assert res_stop["rows"][1]["status"] == "GO"
+    assert res_stop["rows"][2]["status"] == "DROPPED (stopping rule)"
+    assert res_stop["rows"][2]["est_sec"] == 0.0
+    assert res_stop["rows"][2]["cumul_sec"] == 75.0
+    assert res_stop["rows"][3]["status"] == "GO"       # 78.0 s <= 92.0 s
+    assert res_stop["rows"][4]["status"] == "GO"       # 90.0 s <= 92.0 s
+    assert res_stop["rows"][5]["status"] == "NO-GO"    # 138.0 s > 92.0 s
+
+
+def test_z2_backend_parameterization_and_cross_refusal(tmp_path):
+    """Z2: Verify backend parameterization, refusal of Fez on run_hotspot, and cross-backend pilot refusal."""
+    import argparse
+    import pytest
+    from scripts.run_hotspot_hw import run_hotspot
+    from scripts.measure_p1_v2 import run_measure_p1_v2
+
+    # 1. run_hotspot refuses --backend ibm_fez with explicit PREREGISTRATION_v2_4 message
+    args_hotspot_fez = argparse.Namespace(backend="ibm_fez")
+    with pytest.raises(ValueError, match="The pre-registered hot-spot stress test is defined on ibm_marrakesh; cross-backend execution refused under PREREGISTRATION_v2_4."):
+        run_hotspot(args_hotspot_fez)
+
+    # 2. measure_p1_v2 refuses unsupported backend
+    args_p1_invalid = argparse.Namespace(backend="ibm_torino", target="fake", dry_run=True, execute=False, pilot=False, local=True)
+    with pytest.raises(ValueError, match="Refusal: Backend 'ibm_torino' is not supported"):
+        run_measure_p1_v2(args_p1_invalid)
+
+    # 3. measure_p1_v2 accepts ibm_fez for dry run in survey stage
+    args_p1_fez = argparse.Namespace(
+        backend="ibm_fez", stage="survey", target="fake", dry_run=True, execute=False, pilot=False, local=True,
+        approve_seconds=None, config=None, out_dir=str(tmp_path)
+    )
+    run_measure_p1_v2(args_p1_fez)
+
+    # 4. Cross-backend pilot refusal: pilot recorded for Marrakesh refused under --backend ibm_fez
+    import json
+    import time
+    pilot_m_path = tmp_path / "pilot_m.json"
+    pilot_m_path.write_text(json.dumps({
+        "timestamp": time.time(),
+        "backend": "ibm_marrakesh",
+        "calibration_timestamp": "2026-10-16T00:00:00+00:00",
+        "job_id": "real_job_m",
+        "seconds_per_shot": 3.0 / 4096,
+        "is_local": False,
+        "target": "live"
+    }), encoding="utf-8")
+
+    # When measure_p1_v2 checks a pilot file whose backend is Marrakesh while targeting Fez
+    from scripts.budget_table import get_live_pilot_scale
+    scale, usage = get_live_pilot_scale(str(pilot_m_path), expected_backend="ibm_fez")
+    # Cross-refused: fallback scale returned instead of accepting the Marrakesh scale
+    assert scale == 3.0 / 8192
+
+
+def test_z3_fez_survey_confirm_handoff_and_refusal_gates(tmp_path):
+    """Z3: Verify Fez survey execution, confirm refusal gates (missing, >6h, mismatched backend), and distance >= 3 batches."""
+    import argparse
+    import json
+    import time
+    import pytest
+    from scripts.measure_p1_v2 import run_measure_p1_v2, partition_isolated_batches
+    from qiskit_ibm_runtime.fake_provider import FakeFez
+
+    pilot_fez_path = Path("results/hardware_extra/pilot_scale_ibm_fez.json")
+    pilot_fez_path.parent.mkdir(parents=True, exist_ok=True)
+    pilot_fez_path.write_text(json.dumps({
+        "timestamp": time.time(),
+        "backend": "fake_fez",
+        "calibration_timestamp": "2025-02-26T15:16:25-05:00",
+        "job_id": "test_pilot_fez",
+        "seconds_per_shot": 3.0 / 4096,
+        "is_local": True,
+        "target": "fake"
+    }), encoding="utf-8")
+
+    try:
+        # 1. Run local offline survey to produce valid survey JSON
+        args_survey = argparse.Namespace(
+            backend="ibm_fez", stage="survey", target="fake", dry_run=False, execute=True, pilot=False, local=True,
+            approve_seconds=12, config=None, out_dir=str(tmp_path)
+        )
+        survey_file = run_measure_p1_v2(args_survey)
+        assert Path(survey_file).exists()
+        assert "p1v2_survey_fake_fez_" in str(survey_file)
+
+        # 2. Confirm stage refuses if survey file is missing
+        args_confirm_missing = argparse.Namespace(
+            backend="ibm_fez", stage="confirm", from_survey=str(tmp_path / "nonexistent.json"), target="fake", dry_run=True, execute=False, pilot=False, local=True
+        )
+        with pytest.raises(ValueError, match="Refusal: Survey file is missing for --stage confirm"):
+            run_measure_p1_v2(args_confirm_missing)
+
+        # 3. Confirm stage refuses if survey file is older than 6 hours
+        old_survey_path = tmp_path / "old_survey.json"
+        with open(survey_file, "r", encoding="utf-8") as f:
+            s_data = json.load(f)
+        old_data = dict(s_data, timestamp=time.time() - 7 * 3600, execution_timestamp="2020-01-01T00:00:00+00:00")
+        old_survey_path.write_text(json.dumps(old_data), encoding="utf-8")
+        args_confirm_old = argparse.Namespace(
+            backend="ibm_fez", stage="confirm", from_survey=str(old_survey_path), target="fake", dry_run=True, execute=False, pilot=False, local=True
+        )
+        with pytest.raises(ValueError, match="older than 6 hours"):
+            run_measure_p1_v2(args_confirm_old)
+
+        # 4. Confirm stage refuses if survey was run on different backend (e.g. Marrakesh)
+        mismatch_survey_path = tmp_path / "mismatch_survey.json"
+        mismatch_data = dict(s_data, backend="ibm_marrakesh")
+        mismatch_survey_path.write_text(json.dumps(mismatch_data), encoding="utf-8")
+        args_confirm_mismatch = argparse.Namespace(
+            backend="ibm_fez", stage="confirm", from_survey=str(mismatch_survey_path), target="fake", dry_run=True, execute=False, pilot=False, local=True
+        )
+        with pytest.raises(ValueError, match="does not match target backend"):
+            run_measure_p1_v2(args_confirm_mismatch)
+
+        # 5. Confirm stage dry run succeeds with valid fresh survey
+        args_confirm_ok = argparse.Namespace(
+            backend="ibm_fez", stage="confirm", from_survey=survey_file, target="fake", dry_run=True, execute=False, pilot=False, local=True,
+            approve_seconds=None, config=None, out_dir=str(tmp_path)
+        )
+        run_measure_p1_v2(args_confirm_ok)
+
+        # 6. Verify distance >= 3 constraint on FakeFez
+        backend_fez = FakeFez()
+        test_qubits = [0, 1, 2, 14, 15, 28, 50, 75, 100, 125]
+        batches = partition_isolated_batches(test_qubits, backend_fez.target, min_distance=3)
+        cm = backend_fez.target.build_coupling_map()
+        import rustworkx as rx
+        g = rx.PyGraph()
+        g.add_nodes_from(range(backend_fez.target.num_qubits))
+        for edge in cm.get_edges():
+            if edge[0] < edge[1]:
+                g.add_edge(edge[0], edge[1], 1)
+        dist_mat = rx.distance_matrix(g)
+        for b in batches:
+            for i in range(len(b)):
+                for j in range(i + 1, len(b)):
+                    assert dist_mat[b[i]][b[j]] >= 3
+    finally:
+        if pilot_fez_path.exists():
+            pilot_fez_path.unlink()
+
+
+def test_z3_compare_backends_p1_and_claim_check(tmp_path):
+    """Z3: Verify compare_backends_p1 report generation, mandatory banners, and claim_check Rule 16."""
+    import json
+    from scripts.compare_backends_p1 import generate_comparison_report
+    from scripts.claim_check import audit_readme
+
+    # Create synthetic Fez survey file
+    fez_survey_path = tmp_path / "p1v2_survey_ibm_fez_synthetic.json"
+    fez_measurements = {}
+    cal_ro = {}
+    cal_p10 = {}
+    for q in range(156):
+        cal_ro[str(q)] = 0.015
+        cal_p10[str(q)] = 0.010
+        # Give qubit 10 and 20 significant excess
+        p10_val = 0.08 if q in [10, 20] else 0.012
+        fez_measurements[str(q)] = {
+            "A": {
+                "rep0": {"P10": p10_val, "P01": 0.02},
+                "rep1": {"P10": p10_val, "P01": 0.02},
+            }
+        }
+    fez_payload = {
+        "backend": "ibm_fez",
+        "shots_per_pub": 4096,
+        "calibration_timestamp": "2026-10-16T00:00:00+00:00",
+        "target_calibrated_ro": cal_ro,
+        "target_calibrated_prob_meas1_prep0": cal_p10,
+        "measurements": fez_measurements,
+    }
+    fez_survey_path.write_text(json.dumps(fez_payload), encoding="utf-8")
+
+    # Run comparison report against committed Marrakesh snapshot
+    out_txt_path = tmp_path / "backend_compare.txt"
+    report = generate_comparison_report(
+        marrakesh_path="results/hardware/p1_ibm_marrakesh_20261009T001839_0530.json",
+        fez_survey_path=str(fez_survey_path),
+        fez_confirm_path=None,
+        out_txt=str(out_txt_path)
+    )
+
+    assert "DESCRIPTIVE CROSS-BACKEND COMPARISON ONLY -- NOT A HYPOTHESIS TEST" in report
+    assert "DESCRIPTIVE, TWO DEVICES, ONE DAY EACH - NOT A HYPOTHESIS TEST" in report
+    assert "snapshot vs repeated, not like for like" in report
+    assert "ibm_marrakesh" in report and "ibm_fez" in report
+    assert out_txt_path.exists()
+
+    # Rule 16: Claim check must pass currently (no Fez mentions in README)
+    ok, msg = audit_readme()
+    assert ok, f"Claim check failed: {msg}"
+
 
 
 

@@ -1,0 +1,25 @@
+================================================================================
+DASHBOARD FACTS & ALLOWANCE RECONCILIATION (CHECKPOINT Z)
+Source: dashboard screenshot supplied by user (IBM Quantum Platform)
+Timestamp: 2026-10-16T04:05:00+05:30
+================================================================================
+
+1. OBSERVED DASHBOARD METRICS:
+  - Dashboard Remaining Allowance:     242 s (4m 2s, 40% of monthly quota)
+  - Job db6j0o04qg6s73c4sp20 (Thermal): 37 s measured QPU time (planned 48.0 s)
+  - Reserve Buffer Requirement:        150 s (reserve_s, strictly non-spendable)
+  - Spendable Allowance:               92 s (spendable_s = 242 s - 150 s = 92 s)
+
+2. ALLOWANCE RECONCILIATION:
+  - Stored allowance prior to rerun:   279 s
+  - Thermal-arm measured execution:     37 s
+  - Net reconciled allowance:          279 s - 37 s = 242 s (exact match to dashboard)
+
+3. CONFIG STATUS & PRE-FLIGHT AUDIT:
+  - Stored config allowance_remaining_s: 279 (mismatch: pending manual update to 242)
+  - Stored config thermal_arm_dashboard: PENDING (mismatch: pending manual update to 37)
+  - Stored allowance_checked_at:         2026-10-11T12:00:00+00:00 (> 24h old)
+  - Operating rule: Under v2.4/Z protocol, automated tools refuse live execution until
+    the user enters these verified dashboard values into config.yaml.
+================================================================================
+
